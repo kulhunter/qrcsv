@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-R">
-    <title>Generador QR vCard desde CSV . solucionador.cl </title>
+    <meta charset="UTF-8">
+    <title>Generador QR vCard desde CSV</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.2/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -65,6 +65,14 @@
         #process-button:not(:disabled):hover {
             background-color: #0056b3;
         }
+        #status {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #d9534f; /* Color de error por defecto */
+        }
+        #status.success {
+            color: #5cb85c; /* Color de éxito */
+        }
     </style>
 </head>
 <body>
@@ -113,16 +121,13 @@
         dropArea.onclick = () => fileInput.click();
         fileInput.onchange = (e) => handleFiles(e.target.files);
 
-        function handleDrop(e) {
-            handleFiles(e.dataTransfer.files);
-        }
-
         function handleFiles(files) {
             if (files.length > 0) {
                 csvFile = files[0];
                 fileInfo.textContent = `Archivo: ${csvFile.name}`;
                 processButton.disabled = false;
                 processButton.textContent = 'Procesar y Generar QRs';
+                statusEl.textContent = ''; // Limpiar estado anterior
             }
         }
 
@@ -132,6 +137,7 @@
 
             processButton.disabled = true;
             processButton.textContent = 'Procesando...';
+            statusEl.classList.remove('success');
             statusEl.textContent = 'Leyendo y limpiando CSV...';
 
             try {
@@ -159,14 +165,18 @@
                     link.click();
                     document.body.removeChild(link);
                     
+                    statusEl.classList.add('success');
                     statusEl.textContent = `¡Listo! Se ha descargado "QRs_vCard.zip".`;
                 } else {
-                    statusEl.textContent = 'No se encontraron datos válidos (Nombre, Email, WhatsApp) en el CSV.';
+                    statusEl.textContent = 'Error: No se encontraron datos válidos (Nombre, Email, WhatsApp) en el CSV. Revisa que las columnas tengan datos.';
                 }
 
             } catch (error) {
-                console.error(error);
-                statusEl.textContent = `Error: ${error.message}`;
+                console.error(error); // Log completo para depuración
+                // CORRECCIÓN 3: Mejor manejo de mensajes de error
+                let errorMsg = error.message || error.toString() || "Un error desconocido ocurrió.";
+                if (errorMsg === 'undefined') errorMsg = "Error al leer el archivo. Revisa el formato o la codificación del CSV.";
+                statusEl.textContent = `Error: ${errorMsg}`;
             } finally {
                 processButton.disabled = false;
                 processButton.textContent = 'Procesar de nuevo';
@@ -178,6 +188,8 @@
                 Papa.parse(file, {
                     header: true,
                     skipEmptyLines: true,
+                    // CORRECCIÓN 2: Añadir codificación para CSVs de Excel (español)
+                    encoding: "ISO-8859-1",
                     complete: resolve,
                     error: reject
                 });
@@ -201,7 +213,7 @@
                 
                 // 3. Limpiar Teléfono (quitar comillas, espacios y añadir '+')
                 let phone = phoneRaw.trim().replace(/"/g, '').replace(/\s/g, ''); // quita TODOS los espacios
-                if (phone) {
+                if (phone && !phone.startsWith('+')) { // Solo añade '+' si no lo tiene
                     phone = `+${phone}`;
                 }
                 
@@ -227,8 +239,11 @@
                         'END:VCARD'
                     ].filter(Boolean).join('\n'); // filter(Boolean) quita líneas vacías
 
+                    // Nombre de archivo seguro (reemplaza caracteres inválidos)
+                    const safeFileName = name.replace(/[^a-z0-9_-\s]/gi, '').replace(/ /g, '_');
+                    
                     return {
-                        fileName: `${name.replace(/ /g, '_')}.png`, // Nombre del archivo QR
+                        fileName: `${safeFileName || 'contacto'}_${rut || email}.png`,
                         vCard: vCardString
                     };
                 }

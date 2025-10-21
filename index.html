@@ -77,10 +77,10 @@
         #status {
             margin-top: 1rem;
             font-size: 0.9rem;
-            color: #d9534f;
+            color: #d9534f; /* Color de error */
         }
         #status.success {
-            color: #5cb85c;
+            color: #5cb85c; /* Color de éxito */
         }
     </style>
 </head>
@@ -158,14 +158,33 @@
             try {
                 // 1. Leer el CSV
                 const results = await parseCSV(csvFile);
+
+                // --- NUEVA VALIDACIÓN ---
+                // Aquí verificamos si 'results.data' es realmente una lista (array).
+                // Si no lo es, 'rows.map' fallaría.
+                if (!results.data || !Array.isArray(results.data)) {
+                    let errorMsg = "Error: El CSV no se pudo leer correctamente. ";
+                    if (results.errors && results.errors.length > 0) {
+                        // Si PapaParse da un error, mostrarlo
+                        errorMsg += `Detalle: ${results.errors[0].message}`;
+                    } else {
+                        errorMsg += "El formato parece ser inválido o el archivo está corrupto.";
+                    }
+                    throw new Error(errorMsg);
+                }
+                
                 statusEl.textContent = `CSV leído. ${results.data.length} filas encontradas.`;
                 
                 // 2. Limpiar datos y generar vCards
                 const vCards = processData(results.data);
-                statusEl.textContent = `Datos limpios. ${vCards.length} vCards válidas creadas.`;
-
-                // 3. Generar QRs y Zippear
-                if (vCards.length > 0) {
+                
+                if (vCards.length === 0) {
+                     statusEl.textContent = 'Error: No se encontraron filas con "Nombre y apellido" y "Email" o "WhatsApp" válidos en el archivo.';
+                     // No detenerse, pero no generar ZIP
+                } else {
+                    statusEl.textContent = `Datos limpios. ${vCards.length} vCards válidas creadas.`;
+                
+                    // 3. Generar QRs y Zippear
                     statusEl.textContent = 'Generando códigos QR...';
                     const zip = await generateZip(vCards);
                     
@@ -182,16 +201,11 @@
                     
                     statusEl.classList.add('success');
                     statusEl.textContent = `¡Listo! Se ha descargado "QRs_vCard.zip".`;
-                } else {
-                    statusEl.textContent = 'Error: No se encontraron datos válidos (Nombre, Email, WhatsApp) en el CSV. Revisa que las columnas tengan datos.';
                 }
 
             } catch (error) {
                 console.error(error);
-                let errorMsg = error.message || error.toString() || "Un error desconocido ocurrió.";
-                if (errorMsg.includes("Papa is not defined")) {
-                    errorMsg = "La librería de CSV no cargó. Refresca la página e intenta de nuevo."
-                }
+                let errorMsg = error.message || "Un error desconocido ocurrió.";
                 statusEl.textContent = `Error: ${errorMsg}`;
             } finally {
                 processButton.disabled = false;
@@ -204,11 +218,12 @@
 
         function parseCSV(file) {
             return new Promise((resolve, reject) => {
-                // Aquí usamos Papa, que ya debería estar definido
                 Papa.parse(file, {
                     header: true,
                     skipEmptyLines: true,
-                    encoding: "ISO-8859-1",
+                    // CORRECCIÓN: Se eliminó la línea "encoding: 'ISO-8859-1'".
+                    // Dejamos que PapaParse detecte la codificación automáticamente.
+                    // Esto es lo que causaba el error "rows.map is not a function".
                     complete: resolve,
                     error: reject
                 });
@@ -222,6 +237,7 @@
                 const phoneRaw = row['WhatsApp'] || '';
                 const rutRaw = row['Identificacion fiscal'] || '';
                 
+                // Limpieza de datos
                 const name = nameRaw.trim().replace(/"/g, '');
                 const email = emailRaw.trim();
                 let phone = phoneRaw.trim().replace(/"/g, '').replace(/\s/g, '');
@@ -230,6 +246,7 @@
                 }
                 const rut = rutRaw.trim();
                 
+                // Solo crear vCard si tenemos datos útiles
                 if (name && (email || phone)) {
                     const nameParts = name.split(' ');
                     const lastName = nameParts.pop() || '';
@@ -246,26 +263,22 @@
                         'END:VCARD'
                     ].filter(Boolean).join('\n');
 
-                    // Nombre de archivo seguro
                     const safeFileName = name.replace(/[^a-z0-9_-\s]/gi, '').replace(/ /g, '_');
                     
                     return {
-                        // Usar RUT o email como desempate para el nombre de archivo
                         fileName: `${safeFileName || 'contacto'}_${(rut || email || 'qr').replace(/[^a-z0-9]/gi, '')}.png`,
                         vCard: vCardString
                     };
                 }
                 return null;
-            }).filter(Boolean);
+            }).filter(Boolean); // Quitar filas nulas (donde no había nombre, etc.)
         }
 
         async function generateZip(vCards) {
-            // Aquí usamos JSZip
             const zip = new JSZip();
             const qrCanvas = document.createElement('canvas');
 
             for (const item of vCards) {
-                // Aquí usamos QRious
                 const qr = new QRious({
                     element: qrCanvas,
                     value: item.vCard,

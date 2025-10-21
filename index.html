@@ -35,7 +35,16 @@
             border-radius: 10px;
             padding: 3rem;
             transition: all 0.3s ease;
+        }
+        /* El label ES la zona de clic */
+        #file-label {
             cursor: pointer;
+            display: block;
+            font-weight: bold;
+            color: #007bff;
+        }
+        #file-label:hover {
+            text-decoration: underline;
         }
         #drop-area.highlight {
             border-color: #007bff;
@@ -44,7 +53,7 @@
         #file-info {
             margin-top: 1rem;
             font-weight: bold;
-            color: #007bff;
+            color: #0056b3;
         }
         #process-button {
             background-color: #007bff;
@@ -79,11 +88,14 @@
 
     <div class="container">
         <h1>Generador de vCard QR</h1>
-        <p>Arrastra tu archivo CSV de "purchases" aquí. Se generará un ZIP con un QR vCard por cada contacto.</p>
+        <p>Arrastra tu archivo CSV de "purchases" a la zona punteada, o haz clic en el texto azul para seleccionarlo.</p>
         
         <div id="drop-area">
             <input type="file" id="file-input" accept=".csv" style="display: none;">
-            <label for="file-input" id="drop-label">Haz clic o arrastra tu archivo CSV aquí</label>
+            
+            <label for="file-input" id="file-label">Haz clic aquí para seleccionar tu archivo CSV</label>
+            <span style="color: #888; display: block; margin-top: 0.5rem;">...o arrastra y suelta el archivo aquí</span>
+
             <div id="file-info"></div>
         </div>
 
@@ -95,43 +107,55 @@
         const dropArea = document.getElementById('drop-area');
         const fileInput = document.getElementById('file-input');
         const fileInfo = document.getElementById('file-info');
+        const fileLabel = document.getElementById('file-label');
         const processButton = document.getElementById('process-button');
         const statusEl = document.getElementById('status');
         let csvFile = null;
 
         // --- Eventos de Drag & Drop ---
+        
+        // Prevenir que el navegador abra el archivo
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropArea.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
         });
+        
+        // Resaltar la zona al arrastrar sobre ella
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => dropArea.classList.add('highlight'), false);
+        });
+
+        // Quitar resaltado al salir o soltar
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => dropArea.classList.remove('highlight'), false);
+        });
+
+        // Manejar el archivo soltado
+        dropArea.addEventListener('drop', handleDrop, false);
+        
+        // Manejar el archivo seleccionado por clic
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files), false);
 
         function preventDefaults(e) {
             e.preventDefault();
             e.stopPropagation();
         }
 
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropArea.addEventListener(eventName, () => dropArea.classList.add('highlight'), false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropArea.addEventListener(eventName, () => dropArea.classList.remove('highlight'), false);
-        });
-
-        dropArea.addEventListener('drop', handleDrop, false);
-        dropArea.onclick = () => fileInput.click();
-        fileInput.onchange = (e) => handleFiles(e.target.files);
+        function handleDrop(e) {
+            handleFiles(e.dataTransfer.files);
+        }
 
         function handleFiles(files) {
             if (files.length > 0) {
                 csvFile = files[0];
-                fileInfo.textContent = `Archivo: ${csvFile.name}`;
+                fileInfo.textContent = `Archivo seleccionado: ${csvFile.name}`;
+                fileLabel.textContent = 'Archivo listo para procesar'; // Cambia el texto
                 processButton.disabled = false;
                 processButton.textContent = 'Procesar y Generar QRs';
                 statusEl.textContent = ''; // Limpiar estado anterior
             }
         }
 
-        // --- Lógica Principal ---
+        // --- Lógica Principal (SIN CAMBIOS) ---
         processButton.addEventListener('click', async () => {
             if (!csvFile) return;
 
@@ -172,14 +196,15 @@
                 }
 
             } catch (error) {
-                console.error(error); // Log completo para depuración
-                // CORRECCIÓN 3: Mejor manejo de mensajes de error
+                console.error(error);
                 let errorMsg = error.message || error.toString() || "Un error desconocido ocurrió.";
                 if (errorMsg === 'undefined') errorMsg = "Error al leer el archivo. Revisa el formato o la codificación del CSV.";
                 statusEl.textContent = `Error: ${errorMsg}`;
             } finally {
                 processButton.disabled = false;
                 processButton.textContent = 'Procesar de nuevo';
+                fileLabel.textContent = 'Haz clic aquí para seleccionar otro archivo CSV'; // Reset
+                fileInfo.textContent = ''; // Reset
             }
         });
 
@@ -188,8 +213,7 @@
                 Papa.parse(file, {
                     header: true,
                     skipEmptyLines: true,
-                    // CORRECCIÓN 2: Añadir codificación para CSVs de Excel (español)
-                    encoding: "ISO-8859-1",
+                    encoding: "ISO-8859-1", // Para CSVs en español de Excel
                     complete: resolve,
                     error: reject
                 });
@@ -197,49 +221,36 @@
         }
 
         function processData(rows) {
-            // Aquí está la limpieza automática para TU csv
             return rows.map(row => {
-                // Columnas de tu CSV
                 const nameRaw = row['Nombre y apellido'] || '';
                 const emailRaw = row['Email'] || '';
                 const phoneRaw = row['WhatsApp'] || '';
                 const rutRaw = row['Identificacion fiscal'] || '';
                 
-                // 1. Limpiar Nombre (quitar comillas y espacios extra)
                 const name = nameRaw.trim().replace(/"/g, '');
-                
-                // 2. Limpiar Email (quitar espacios)
                 const email = emailRaw.trim();
-                
-                // 3. Limpiar Teléfono (quitar comillas, espacios y añadir '+')
-                let phone = phoneRaw.trim().replace(/"/g, '').replace(/\s/g, ''); // quita TODOS los espacios
-                if (phone && !phone.startsWith('+')) { // Solo añade '+' si no lo tiene
+                let phone = phoneRaw.trim().replace(/"/g, '').replace(/\s/g, '');
+                if (phone && !phone.startsWith('+')) {
                     phone = `+${phone}`;
                 }
-                
-                // 4. Limpiar RUT (quitar espacios)
                 const rut = rutRaw.trim();
                 
-                // Solo crear vCard si tenemos datos útiles
                 if (name && (email || phone)) {
-                    // Separar nombre para el campo 'N:'
                     const nameParts = name.split(' ');
                     const lastName = nameParts.pop() || '';
                     const firstName = nameParts.join(' ') || '';
 
-                    // Crear el string vCard
                     const vCardString = [
                         'BEGIN:VCARD',
                         'VERSION:3.0',
-                        `N:${lastName};${firstName};;;`, // Apellido;Nombre
-                        `FN:${name}`, // Nombre completo
+                        `N:${lastName};${firstName};;;`,
+                        `FN:${name}`,
                         email ? `EMAIL:${email}` : '',
                         phone ? `TEL;TYPE=CELL:${phone}` : '',
                         rut ? `NOTE:RUT: ${rut}` : '',
                         'END:VCARD'
-                    ].filter(Boolean).join('\n'); // filter(Boolean) quita líneas vacías
+                    ].filter(Boolean).join('\n');
 
-                    // Nombre de archivo seguro (reemplaza caracteres inválidos)
                     const safeFileName = name.replace(/[^a-z0-9_-\s]/gi, '').replace(/ /g, '_');
                     
                     return {
@@ -248,25 +259,22 @@
                     };
                 }
                 return null;
-            }).filter(Boolean); // Quitar filas nulas
+            }).filter(Boolean);
         }
 
         async function generateZip(vCards) {
             const zip = new JSZip();
-            const qrCanvas = document.createElement('canvas'); // Canvas oculto para dibujar QR
+            const qrCanvas = document.createElement('canvas');
 
             for (const item of vCards) {
                 const qr = new QRious({
                     element: qrCanvas,
                     value: item.vCard,
                     size: 400,
-                    level: 'L' // Nivel de corrección de error bajo (para más datos)
+                    level: 'L'
                 });
                 
-                // Convertir canvas a Blob (imagen PNG)
                 const blob = await new Promise(resolve => qrCanvas.toBlob(resolve, 'image/png'));
-                
-                // Añadir imagen al ZIP
                 zip.file(item.fileName, blob);
             }
             return zip;

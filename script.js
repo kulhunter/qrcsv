@@ -22,7 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
         Papa.parse(file, {
             header: true, // ¡IMPORTANTE! Usa la primera fila como cabecera
             skipEmptyLines: true,
-            encoding: "UTF-8", //Asegurar que lea bien tildes y ñ
+            // NO especificamos encoding. Dejamos que PapaParse lo autodetecte.
+            // Esto soluciona cuelgues si el CSV no es UTF-8.
             
             complete: (results) => {
                 const data = results.data;

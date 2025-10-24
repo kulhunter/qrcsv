@@ -22,8 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
         Papa.parse(file, {
             header: true, // ¡IMPORTANTE! Usa la primera fila como cabecera
             skipEmptyLines: true,
-            // NO especificamos encoding. Dejamos que PapaParse lo autodetecte.
-            // Esto soluciona cuelgues si el CSV no es UTF-8.
+            bom: true, // NUEVO: Añadido para ignorar caracteres BOM de Excel
             
             complete: (results) => {
                 const data = results.data;
@@ -38,16 +37,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 let qrCount = 0;
                 for (const row of data) {
                     
-                    // 4. EXTRAER Y LIMPIAR DATOS (¡AQUÍ ESTÁ LA PERSONALIZACIÓN!)
-                    
-                    // Usamos los nombres exactos de tu CSV
+                    // 4. EXTRAER Y LIMPIAR DATOS
                     const name = row['Nombre y apellido'] ? row['Nombre y apellido'].trim() : '';
                     const email = row['Email'] ? row['Email'].trim() : '';
-                    
-                    // Limpiamos el WhatsApp: quitamos espacios, comillas, y todo lo que no sea número
                     let phone = row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '';
                     
-                    // Si la fila no tiene ningún dato útil, la saltamos
                     if (!name && !email && !phone) {
                         continue;
                     }
@@ -58,25 +52,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     // 6. Crear la "tarjeta" en la web
                     const card = document.createElement('div');
                     card.className = 'qr-card';
-
-                    // Añadir el nombre como título
                     const title = document.createElement('p');
-                    title.textContent = name || email || phone; // Muestra el nombre, o el email/tel si no hay nombre
+                    title.textContent = name || email || phone;
                     card.appendChild(title);
-
-                    // Crear el div que contendrá el QR
                     const qrCodeEl = document.createElement('div');
                     card.appendChild(qrCodeEl);
-
-                    // Añadir la tarjeta al contenedor
                     qrContainer.appendChild(card);
 
                     // 7. Generar el QR usando la librería
                     new QRCode(qrCodeEl, {
                         text: vCard,
-                        width: 180, // Tamaño del QR
+                        width: 180,
                         height: 180,
-                        correctLevel: QRCode.CorrectLevel.M // Nivel de corrección
+                        correctLevel: QRCode.CorrectLevel.M
                     });
                     
                     qrCount++;
@@ -100,26 +88,22 @@ document.addEventListener('DOMContentLoaded', () => {
         let vCard = "BEGIN:VCARD\n";
         vCard += "VERSION:3.0\n";
 
-        // Formatear el nombre para vCard (N: Apellido;Nombre)
         let nameParts = name.split(' ');
-        let firstName = nameParts.shift() || ''; // El primero es el nombre
-        let lastName = nameParts.join(' ') || '';  // El resto es apellido
+        let firstName = nameParts.shift() || '';
+        let lastName = nameParts.join(' ') || '';
 
-        // Si no hay apellido, usamos el nombre como apellido (mejor que nada)
         if (!lastName) {
             lastName = firstName;
             firstName = '';
         }
         
-        vCard += `N:${lastName};${firstName};;;\n`; // Campo N (Name)
-        vCard += `FN:${name}\n`;                      // Campo FN (Full Name)
+        vCard += `N:${lastName};${firstName};;;\n`;
+        vCard += `FN:${name}\n`;
 
-        // Añadir teléfono si existe
         if (phone) {
             vCard += `TEL;TYPE=CELL:${phone}\n`;
         }
 
-        // Añadir email si existe
         if (email) {
             vCard += `EMAIL:${email}\n`;
         }

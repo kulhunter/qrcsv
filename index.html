@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v9 - Buscador)</title>
+    <title>Generador de Contactos QR (v10 - Anti-crash)</title>
     
     <script src="papaparse.min.js"></script>
     <script src="qrcode.min.js"></script>
@@ -66,7 +66,6 @@
         }
         input[type="file"]::file-selector-button:hover { background: #0056b3; }
         
-        /* Botones */
         button {
             font-size: 1rem;
             font-weight: 600;
@@ -78,44 +77,27 @@
             transition: background-color 0.2s ease;
         }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #generateBtn { background-color: #28a745; }
+        #generateBtn:hover { background-color: #218838; }
         
-        #generateBtn {
-            background-color: #28a745; /* Verde */
-        }
-        #generateBtn:hover {
-            background-color: #218838;
-        }
-        
-        /* ---- NUEVO: ESTILOS DEL BUSCADOR ---- */
-        .search-container {
-            margin: -10px 0 15px 0; /* Espaciado */
-        }
+        .search-container { margin: -10px 0 15px 0; }
         #searchBox {
             width: 100%;
             padding: 12px 15px;
             font-size: 1rem;
             border: 1px solid #ddd;
             border-radius: 8px;
-            box-sizing: border-box; /* Para que el padding no rompa el ancho */
-            display: none; /* Oculto por defecto */
+            box-sizing: border-box; 
+            display: none; 
         }
-        /* ---- FIN NUEVOS ESTILOS ---- */
 
-        /* Contenedor del botón ZIP */
-        .download-container {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        
+        .download-container { text-align: center; margin-bottom: 20px; }
         #downloadBtn {
-            background-color: #007bff; /* Azul */
-            display: none; /* Oculto por defecto */
+            background-color: #007bff;
+            display: none; 
         }
-        #downloadBtn:hover {
-            background-color: #0056b3;
-        }
+        #downloadBtn:hover { background-color: #0056b3; }
         
-        /* Status */
         #status {
             text-align: center;
             font-size: 1.1rem;
@@ -125,6 +107,7 @@
             align-items: center;
             justify-content: center;
             gap: 10px;
+            flex-wrap: wrap; /* Para que el mensaje de error no se corte */
         }
         .loader {
             width: 20px;
@@ -139,7 +122,6 @@
             100% { transform: rotate(360deg); }
         }
         
-        /* Grid de QRs */
         #qr-container {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -154,6 +136,7 @@
             text-align: center;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             transition: transform 0.2s, box-shadow 0.2s;
+            display: block; /* Para que el buscador funcione bien con las tarjetas que fallan */
         }
         .qr-card:hover {
             transform: translateY(-5px);
@@ -169,6 +152,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            min-height: 100px; /* Espacio para el mensaje de error */
         }
     </style>
 </head>
@@ -204,24 +188,25 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v9 (Local + ZIP + Buscador) cargado.");
+            console.log("Generador QR v10 (Anti-crash) cargado.");
 
-            // Referencias a elementos
+            // Referencias
             const csvFile = document.getElementById('csvFile');
             const generateBtn = document.getElementById('generateBtn');
             const downloadBtn = document.getElementById('downloadBtn');
-            const searchBox = document.getElementById('searchBox'); // <-- NUEVO
+            const searchBox = document.getElementById('searchBox');
             const status = document.getElementById('status');
             const qrContainer = document.getElementById('qr-container');
             
             let qrCount = 0;
-            let generatedQRs = []; // Array para guardar los QRs para el ZIP
+            let qrErrors = 0; // <-- NUEVO: Contador de errores
+            let generatedQRs = []; 
 
-            // ---- Evento del botón "Generar QRs" ----
+            // ---- Evento "Generar QRs" ----
             generateBtn.addEventListener('click', () => {
                 
                 if (typeof Papa === 'undefined' || typeof QRCode === 'undefined') {
-                    console.error("¡ERROR FATAL! Las librerías (Papa o QRCode) NO se cargaron.");
+                    console.error("¡ERROR FATAL! Las librerías no se cargaron.");
                     status.innerHTML = '<p style="color: red;">ERROR: Las librerías locales no cargaron. Refresca la página.</p>';
                     return;
                 }
@@ -230,62 +215,68 @@
                     return;
                 }
 
-                // Resetear la UI
+                // Resetear UI
                 const file = csvFile.files[0];
                 qrContainer.innerHTML = '';
                 qrCount = 0;
+                qrErrors = 0; // <-- NUEVO: Resetear contador de errores
                 generatedQRs = []; 
-                downloadBtn.style.display = 'none'; // Ocultar botón ZIP
-                searchBox.style.display = 'none'; // <-- NUEVO: Ocultar buscador
-                searchBox.value = ''; // <-- NUEVO: Limpiar buscador
+                downloadBtn.style.display = 'none';
+                searchBox.style.display = 'none';
+                searchBox.value = '';
                 status.innerHTML = '<div class="loader"></div> <p>Procesando archivo...</p>';
                 generateBtn.disabled = true;
 
                 console.log("Iniciando parseo de PapaParse (local)...");
 
-                // Parsear el CSV
+                // Parsear CSV
                 Papa.parse(file, {
                     header: true,
                     skipEmptyLines: true,
                     bom: true, 
                     
+                    // Procesar fila por fila
                     step: (results, parser) => {
                         const row = results.data;
-                        if (qrCount === 0) {
+                        if (qrCount === 0 && qrErrors === 0) { // Loguear solo la primera vez
                             console.log("Datos de la primera fila procesada:", row);
                         }
                         
+                        // Truncar datos (máximo 100 caracteres)
+                        const MAX_LEN = 100;
+                        const name = (row['Nombre y apellido'] ? row['Nombre y apellido'].trim() : '').substring(0, MAX_LEN);
+                        const email = (row['Email'] ? row['Email'].trim() : '').substring(0, MAX_LEN);
+                        let phone = (row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '').substring(0, 20);
+
+                        if (!name && !email && !phone) {
+                            return; // Saltar fila vacía
+                        }
+
+                        // 1. Crear VCard
+                        const vCard = createVCard(name, email, phone);
+                        
+                        // 2. Crear Tarjeta HTML
+                        const card = document.createElement('div');
+                        card.className = 'qr-card';
+                        const title = document.createElement('p');
+                        title.textContent = `${name} | ${email} | ${phone}`;
+                        card.appendChild(title);
+                        const qrCodeEl = document.createElement('div');
+                        card.appendChild(qrCodeEl);
+                        qrContainer.appendChild(card);
+
+                        // 3. Generar QR (con try/catch individual)
                         try {
-                            // Truncamos datos para evitar error 'overflow'
-                            const MAX_LEN = 100;
-                            const name = (row['Nombre y apellido'] ? row['Nombre y apellido'].trim() : '').substring(0, MAX_LEN);
-                            const email = (row['Email'] ? row['Email'].trim() : '').substring(0, MAX_LEN);
-                            let phone = (row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '').substring(0, 20);
-
-                            if (!name && !email && !phone) {
-                                return;
-                            }
-
-                            const vCard = createVCard(name, email, phone);
-                            const card = document.createElement('div');
-                            card.className = 'qr-card';
-                            
-                            // Guardamos el texto de búsqueda en el <p>
-                            const title = document.createElement('p');
-                            title.textContent = `${name} | ${email} | ${phone}`; // <-- MODIFICADO para que busque en todo
-                            card.appendChild(title);
-                            
-                            const qrCodeEl = document.createElement('div');
-                            card.appendChild(qrCodeEl);
-                            qrContainer.appendChild(card);
-
                             new QRCode(qrCodeEl, {
                                 text: vCard,
                                 width: 180,
                                 height: 180,
-                                correctLevel: QRCode.CorrectLevel.M
+                                // ---- ¡CAMBIO CLAVE 1! ----
+                                // Nivel 'L' (Low) permite MÁS DATOS que 'M' (Medium)
+                                correctLevel: QRCode.CorrectLevel.L 
                             });
                             
+                            // 4. Guardar para ZIP (solo si tuvo éxito)
                             setTimeout(() => {
                                 const canvas = qrCodeEl.querySelector('canvas');
                                 if (canvas) {
@@ -295,28 +286,48 @@
                                 }
                             }, 1);
                             
-                            qrCount++;
+                            qrCount++; // Contar solo los exitosos
+                            
                         } catch (e) {
-                            console.error(`¡Error procesando fila ${qrCount+1}!`, e.message, "Datos:", row);
-                            parser.abort(); 
-                            status.innerHTML = `<p style="color: red;">Error al procesar la fila ${qrCount + 1}: ${e.message}. Revisa la consola.</p>`;
+                            // ---- ¡CAMBIO CLAVE 2! ----
+                            // El parser YA NO SE DETIENE (eliminamos 'parser.abort()')
+                            
+                            qrErrors++; // Contar el error
+                            console.error(`¡Error procesando fila (Nombre: ${name})!`, e.message, "Datos:", row);
+                            
+                            // Mostrar error en la tarjeta específica
+                            title.innerHTML = `<span style="color: red; font-weight: bold;">ERROR</span><br>${name}`;
+                            qrCodeEl.innerHTML = `<p style="font-size: 0.8rem; color: red; word-wrap: break-word;">Datos muy largos para QR.<br>(${e.message})</p>`;
                         }
                     },
                     
+                    // Al completar el parseo
                     complete: () => {
-                        console.log(`Parseo completado. Total de QRs generados: ${qrCount}`);
+                        console.log(`Parseo completado. ${qrCount} QRs generados, ${qrErrors} errores.`);
+                        
                         if (qrCount > 0) {
-                            status.innerHTML = `<p style="color: green;">¡Se generaron ${qrCount} códigos QR!</p>`;
-                            downloadBtn.style.display = 'block';
-                            searchBox.style.display = 'block'; // <-- NUEVO: Mostrar buscador
-                        } else {
-                            if (status.textContent.includes("Procesando")) {
-                                status.innerHTML = `<p style="color: red;">No se encontraron datos válidos para generar QRs.</p>`;
+                            // Mostrar mensaje de éxito (incluso si hubo errores)
+                            let statusMsg = `<p style="color: green;">¡Se generaron ${qrCount} códigos QR!</p>`;
+                            if (qrErrors > 0) {
+                                statusMsg += ` <p style="color: red;">(${qrErrors} fila${qrErrors > 1 ? 's' : ''} fallaron).</p>`;
                             }
+                            status.innerHTML = statusMsg;
+                            
+                            downloadBtn.style.display = 'block';
+                            searchBox.style.display = 'block'; 
+                        
+                        } else if (qrErrors > 0) {
+                            // Si solo hubo errores
+                            status.innerHTML = `<p style="color: red;">No se pudo generar ningún QR. ${qrErrors} filas fallaron.</p>`;
+                        } else {
+                            // Si no hubo QRs ni errores (archivo vacío)
+                            status.innerHTML = `<p style="color: red;">No se encontraron datos válidos para generar QRs.</p>`;
                         }
+                        
                         generateBtn.disabled = false;
                     },
                     
+                    // Si PapaParse falla
                     error: (err, file) => {
                         console.error("¡Error crítico de PapaParse!:", err);
                         status.innerHTML = `<p style="color: red;">Error grave al leer el archivo: ${err.message}.</p>`;
@@ -325,19 +336,17 @@
                 });
             });
 
-            // ---- NUEVO: Evento del Buscador ----
+            // ---- Evento del Buscador ----
             searchBox.addEventListener('input', () => {
                 const query = searchBox.value.toLowerCase().trim();
                 const allCards = document.querySelectorAll('.qr-card');
                 
                 allCards.forEach(card => {
-                    // Buscamos en el texto del <p> que creamos
                     const name = card.querySelector('p').textContent.toLowerCase();
-                    
                     if (name.includes(query)) {
-                        card.style.display = 'block'; // Muestra si coincide
+                        card.style.display = 'block';
                     } else {
-                        card.style.display = 'none'; // Oculta si no coincide
+                        card.style.display = 'none';
                     }
                 });
             });
@@ -348,8 +357,9 @@
                     alert("Error: La librería JSZip no se cargó. Refresca la página.");
                     return;
                 }
-                if (generatedQRs.length === 0) {
-                    alert("No hay QRs para descargar.");
+                // Descarga solo los QRs que SÍ se generaron
+                if (generatedQRs.length === 0) { 
+                    alert("No hay QRs exitosos para descargar.");
                     return;
                 }
 

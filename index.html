@@ -2,296 +2,554 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Generador QR vCard desde CSV</title>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.2/papaparse.min.js"></script>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de QR vCard desde CSV</title>
+    
+    <!-- 
+      Librerías cargadas desde CDN.
+      Usaremos window.load para asegurarnos de que estén listas
+      antes de ejecutar el script de la aplicación.
+    -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            display: grid;
-            place-items: center;
-            min-height: 90vh;
-            background-color: #f4f7f6;
-            color: #333;
+        /* Estilos CSS - Todo en el mismo archivo */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+        :root {
+            --color-bg: #f8f9fa;
+            --color-bg-light: #ffffff;
+            --color-text: #212529;
+            --color-text-light: #6c757d;
+            --color-primary: #007bff;
+            --color-primary-dark: #0056b3;
+            --color-border: #dee2e6;
+            --color-drop-hover: #e9ecef;
+            --color-success: #28a745;
+            --color-error: #dc3545;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            --border-radius: 12px;
         }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        main {
+            width: 100%;
+            max-width: 600px;
+            background-color: var(--color-bg-light);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--color-border);
+            overflow: hidden;
+        }
+
         .container {
+            padding: 2.5rem;
             text-align: center;
-            padding: 2rem 3rem;
-            background-color: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }
+
         h1 {
-            color: #1a1a1a;
             margin-top: 0;
+            margin-bottom: 0.75rem;
+            color: var(--color-text);
+            font-weight: 700;
         }
-        p {
-            color: #555;
-            max-width: 400px;
+
+        .instructions {
+            margin-bottom: 2rem;
+            color: var(--color-text-light);
+            font-size: 1rem;
+            line-height: 1.6;
         }
-        #drop-area {
-            border: 3px dashed #ccc;
-            border-radius: 10px;
+
+        #drop-zone {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
             padding: 3rem;
-            transition: all 0.3s ease;
-        }
-        #file-label {
+            border: 2px dashed var(--color-border);
+            border-radius: var(--border-radius);
+            background-color: var(--color-bg);
             cursor: pointer;
-            display: block;
-            font-weight: bold;
-            color: #007bff;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }
-        #file-label:hover {
-            text-decoration: underline;
+
+        #drop-zone.hover {
+            background-color: var(--color-drop-hover);
+            border-color: var(--color-primary);
         }
-        #drop-area.highlight {
-            border-color: #007bff;
-            background-color: #f0f8ff;
+
+        #drop-zone p {
+            margin: 0;
+            margin-bottom: 1rem;
+            color: var(--color-text-light);
+            font-weight: 500;
         }
-        #file-info {
-            margin-top: 1rem;
-            font-weight: bold;
-            color: #0056b3;
-        }
-        #process-button {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 1.5rem;
-            transition: background-color 0.3s ease;
-        }
-        #process-button:disabled {
-            background-color: #a0a0a0;
-            cursor: not-allowed;
-        }
-        #process-button:not(:disabled):hover {
-            background-color: #0056b3;
-        }
-        #status {
-            margin-top: 1rem;
+
+        /* Estilo para el botón "O selecciona un archivo" */
+        .browse-button {
+            font-family: 'Inter', sans-serif;
             font-size: 0.9rem;
-            color: #d9534f; /* Color de error */
+            font-weight: 500;
+            color: var(--color-primary);
+            background-color: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius);
+            transition: background-color 0.2s ease;
         }
-        #status.success {
-            color: #5cb85c; /* Color de éxito */
+        
+        .browse-button:hover {
+            background-color: rgba(0, 123, 255, 0.1);
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        #file-name {
+            margin-top: 1.5rem;
+            color: var(--color-text);
+            font-weight: 500;
+            display: none;
+        }
+
+        #process-button {
+            margin-top: 1.5rem;
+            width: 100%;
+            padding: 1rem;
+            font-size: 1rem;
+            font-weight: 700;
+            color: #ffffff;
+            background-color: var(--color-primary);
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: background-color 0.2s ease, box-shadow 0.2s ease;
+            display: none; /* Oculto hasta que se cargue un archivo */
+        }
+
+        #process-button:hover:not(:disabled) {
+            background-color: var(--color-primary-dark);
+            box-shadow: 0 4px 14px rgba(0, 123, 255, 0.25);
+        }
+
+        #process-button:disabled {
+            background-color: var(--color-text-light);
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        #status-message {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            font-weight: 500;
+            display: none; /* Oculto por defecto */
+            text-align: center;
+        }
+
+        #status-message.success {
+            background-color: #eaf6ec;
+            color: var(--color-success);
+            border: 1px solid rgba(40, 167, 69, 0.3);
+        }
+
+        #status-message.error {
+            background-color: #fbebee;
+            color: var(--color-error);
+            border: 1px solid rgba(220, 53, 69, 0.3);
+        }
+
+        #status-message.loading {
+            background-color: #e7f3fe;
+            color: var(--color-primary);
+            border: 1px solid rgba(0, 123, 255, 0.3);
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            body {
+                padding: 1rem;
+            }
+            .container {
+                padding: 1.5rem;
+            }
+            h1 {
+                font-size: 1.75rem;
+            }
+            #drop-zone {
+                padding: 2rem;
+            }
         }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h1>Generador de vCard QR</h1>
-        <p>Arrastra tu archivo CSV de "purchases" a la zona punteada, o haz clic en el texto azul para seleccionarlo.</p>
-        
-        <div id="drop-area">
-            <input type="file" id="file-input" accept=".csv" style="display: none;">
-            <label for="file-input" id="file-label">Haz clic aquí para seleccionar tu archivo CSV</label>
-            <span style="color: #888; display: block; margin-top: 0.5rem;">...o arrastra y suelta el archivo aquí</span>
-            <div id="file-info"></div>
-        </div>
+    <main>
+        <div class="container">
+            <h1>Generador de QR vCard</h1>
+            <p class="instructions">
+                Arrastra y suelta un archivo CSV o haz clic para seleccionarlo. La aplicación generará un archivo .zip con los códigos QR.
+            </p>
 
-        <button id="process-button" disabled>Sube un archivo primero</button>
-        <div id="status"></div>
-    </div>
+            <!-- Zona para arrastrar y soltar -->
+            <div id="drop-zone">
+                <p>Arrastra tu archivo CSV aquí</p>
+                <button type="button" id="browse-button" class="browse-button">O selecciona un archivo</button>
+                <input type="file" id="file-input" accept=".csv, text/csv, application/vnd.ms-excel">
+            </div>
+
+            <!-- Feedback de archivo y botón de proceso -->
+            <p id="file-name"></p>
+            <button id="process-button" disabled>Procesar y Generar QRs</button>
+
+            <!-- Mensajes de estado -->
+            <div id="status-message"></div>
+        </div>
+    </main>
 
     <script>
-        const dropArea = document.getElementById('drop-area');
-        const fileInput = document.getElementById('file-input');
-        const fileInfo = document.getElementById('file-info');
-        const fileLabel = document.getElementById('file-label');
-        const processButton = document.getElementById('process-button');
-        const statusEl = document.getElementById('status');
-        let csvFile = null;
-
-        // --- Eventos de Drag & Drop ---
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            document.body.addEventListener(eventName, preventDefaults, false);
-        });
+        // Todo el JavaScript en el mismo archivo
         
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropArea.addEventListener(eventName, () => dropArea.classList.add('highlight'), false);
-        });
+        // CAMBIO: Ya no usamos un event listener ('load' o 'DOMContentLoaded').
+        // Al estar este bloque <script> al final del <body>,
+        // nos aseguramos de que los scripts del <head> (Papa, QRious, JSZip)
+        // y el HTML del <body> (los botones, drop-zone) YA existen
+        // cuando este código se ejecuta.
 
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropArea.addEventListener(eventName, () => dropArea.classList.remove('highlight'), false);
-        });
+        // Referencias a los elementos del DOM
+        const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            const browseButton = document.getElementById('browse-button');
+            const fileNameDisplay = document.getElementById('file-name');
+            const processButton = document.getElementById('process-button');
+            const statusMessage = document.getElementById('status-message');
+            
+            let csvFile = null;
 
-        dropArea.addEventListener('drop', handleDrop, false);
-        fileInput.addEventListener('change', (e) => handleFiles(e.target.files), false);
-
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-
-        function handleDrop(e) {
-            handleFiles(e.dataTransfer.files);
-        }
-
-        function handleFiles(files) {
-            if (files.length > 0) {
-                csvFile = files[0];
-                fileInfo.textContent = `Archivo seleccionado: ${csvFile.name}`;
-                fileLabel.textContent = 'Archivo listo para procesar';
-                processButton.disabled = false;
-                processButton.textContent = 'Procesar y Generar QRs';
-                statusEl.textContent = '';
+            // --- Comprobación de Librerías ---
+            // Esta comprobación se ejecuta DESPUÉS de que todo ha cargado.
+            if (typeof Papa === 'undefined' || typeof QRious === 'undefined' || typeof JSZip === 'undefined') {
+                showStatus("Error: Las librerías externas no se cargaron correctamente. Refresca la página.", "error");
+                console.error("Error: PapaParse, QRious, o JSZip no están definidos.");
+                return; // Detenemos la ejecución
             }
-        }
 
-        // --- Lógica Principal ---
-        processButton.addEventListener('click', async () => {
-            if (!csvFile) return;
+            // --- Lógica de Arrastrar y Soltar (Drag and Drop) ---
 
-            processButton.disabled = true;
-            processButton.textContent = 'Procesando...';
-            statusEl.classList.remove('success');
-            statusEl.textContent = 'Leyendo y limpiando CSV...';
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('hover');
+            });
 
-            try {
-                // 1. Leer el CSV
-                const results = await parseCSV(csvFile);
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('hover');
+            });
 
-                // --- NUEVA VALIDACIÓN ---
-                // Aquí verificamos si 'results.data' es realmente una lista (array).
-                // Si no lo es, 'rows.map' fallaría.
-                if (!results.data || !Array.isArray(results.data)) {
-                    let errorMsg = "Error: El CSV no se pudo leer correctamente. ";
-                    if (results.errors && results.errors.length > 0) {
-                        // Si PapaParse da un error, mostrarlo
-                        errorMsg += `Detalle: ${results.errors[0].message}`;
-                    } else {
-                        errorMsg += "El formato parece ser inválido o el archivo está corrupto.";
-                    }
-                    throw new Error(errorMsg);
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('hover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFile(files[0]);
                 }
-                
-                statusEl.textContent = `CSV leído. ${results.data.length} filas encontradas.`;
-                
-                // 2. Limpiar datos y generar vCards
-                const vCards = processData(results.data);
-                
-                if (vCards.length === 0) {
-                     statusEl.textContent = 'Error: No se encontraron filas con "Nombre y apellido" y "Email" o "WhatsApp" válidos en el archivo.';
-                     // No detenerse, pero no generar ZIP
+            });
+
+            // --- Lógica de Selección de Archivo ---
+            
+            // Permitir clic en toda la zona
+            dropZone.addEventListener('click', (e) => {
+                 // Evitar doble clic si se presiona el botón
+                if (e.target !== browseButton) {
+                    fileInput.click();
+                }
+            });
+            
+            // Clic específico en el botón
+            browseButton.addEventListener('click', () => {
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFile(e.target.files[0]);
+                }
+            });
+
+            /**
+             * Maneja el archivo seleccionado (drag/drop o input)
+             */
+            function handleFile(file) {
+                // Se añade "application/vnd.ms-excel" por si acaso Excel exporta con ese MIME type
+                if (file && (file.type === "text/csv" || file.name.endsWith(".csv") || file.type === "application/vnd.ms-excel")) {
+                    csvFile = file;
+                    fileNameDisplay.textContent = `Archivo: ${file.name}`;
+                    fileNameDisplay.style.display = 'block';
+                    processButton.style.display = 'block';
+                    processButton.disabled = false;
+                    clearStatus();
                 } else {
-                    statusEl.textContent = `Datos limpios. ${vCards.length} vCards válidas creadas.`;
-                
-                    // 3. Generar QRs y Zippear
-                    statusEl.textContent = 'Generando códigos QR...';
-                    const zip = await generateZip(vCards);
-                    
-                    statusEl.textContent = 'Descargando ZIP...';
-                    const content = await zip.generateAsync({ type: 'blob' });
-                    
-                    // 4. Descargar
-                    const link = document.createElement('a');
-                    link.href = URL.createObjectURL(content);
-                    link.download = 'QRs_vCard.zip';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    
-                    statusEl.classList.add('success');
-                    statusEl.textContent = `¡Listo! Se ha descargado "QRs_vCard.zip".`;
+                    csvFile = null;
+                    fileNameDisplay.style.display = 'none';
+                    processButton.style.display = 'none';
+                    processButton.disabled = true;
+                    showStatus("Error: Por favor, selecciona un archivo .csv válido.", "error");
                 }
-
-            } catch (error) {
-                console.error(error);
-                let errorMsg = error.message || "Un error desconocido ocurrió.";
-                statusEl.textContent = `Error: ${errorMsg}`;
-            } finally {
-                processButton.disabled = false;
-                processButton.textContent = 'Procesar de nuevo';
-                fileLabel.textContent = 'Haz clic aquí para seleccionar otro archivo CSV';
-                fileInfo.textContent = '';
-                csvFile = null; // Resetear el archivo
             }
-        });
 
-        function parseCSV(file) {
-            return new Promise((resolve, reject) => {
+            // --- Lógica Principal de Procesamiento ---
+
+            processButton.addEventListener('click', () => {
+                if (csvFile) {
+                    processFile(csvFile);
+                }
+            });
+
+            /**
+             * Analiza el CSV, genera los QRs y los comprime en un ZIP
+             */
+            async function processFile(file) {
+                processButton.disabled = true;
+                processButton.textContent = "Procesando...";
+                showStatus("Analizando archivo CSV...", "loading");
+
                 Papa.parse(file, {
                     header: true,
                     skipEmptyLines: true,
-                    // CORRECCIÓN: Se eliminó la línea "encoding: 'ISO-8859-1'".
-                    // Dejamos que PapaParse detecte la codificación automáticamente.
-                    // Esto es lo que causaba el error "rows.map is not a function".
-                    complete: resolve,
-                    error: reject
+                    // No forzamos codificación, dejamos que PapaParse autodetecte
+                    complete: async (results) => {
+                        
+                        // Validación de Datos (Requisito)
+                        if (!results || !Array.isArray(results.data)) {
+                            showStatus("Error: El formato del CSV es inválido o no se pudo leer.", "error");
+                            processButton.disabled = false;
+                            processButton.textContent = "Procesar y Generar QRs";
+                            return;
+                        }
+
+                        console.log("Datos analizados:", results.data);
+                        showStatus(`Encontradas ${results.data.length} filas. Generando QRs...`, "loading");
+                        
+                        const zip = new JSZip();
+                        const qrCanvas = document.createElement('canvas'); // Canvas reutilizable
+                        let vCardCount = 0;
+
+                        for (const row of results.data) {
+                            const cleanedRow = cleanData(row);
+                            
+                            // Requisito: Solo procesar si hay Nombre Y (Email O WhatsApp)
+                            if (cleanedRow.nombre && (cleanedRow.email || cleanedRow.whatsapp)) {
+                                try {
+                                    const vCardString = generateVCardString(cleanedRow);
+                                    
+                                    // Generar QR
+                                    new QRious({
+                                        element: qrCanvas,
+                                        value: vCardString,
+                                        size: 300,
+                                        level: 'M' // Nivel de corrección de errores
+                                    });
+                                    
+                                    // Obtener imagen como DataURL y convertir a Blob
+                                    const dataUrl = qrCanvas.toDataURL('image/png');
+                                    const base64Data = dataUrl.split(',')[1];
+                                    
+                                    // Generar nombre de archivo
+                                    const fileName = `${slugify(cleanedRow.nombre)}.png`;
+                                    
+                                    // Añadir al ZIP
+                                    zip.file(fileName, base64Data, { base64: true });
+                                    vCardCount++;
+
+                                } catch (qrError) {
+                                    console.error(`Error generando QR para ${cleanedRow.nombre}:`, qrError);
+                                    // Opcional: mostrar un error parcial
+                                }
+                            }
+                        }
+
+                        if (vCardCount > 0) {
+                            showStatus(`¡Listo! Comprimiendo ${vCardCount} códigos QR...`, "loading");
+                            
+                            // Generar y descargar el ZIP
+                            zip.generateAsync({ type: "blob" })
+                                .then((content) => {
+                                    const link = document.createElement('a');
+                                    link.href = URL.createObjectURL(content);
+                                    link.download = "QRs_vCard.zip";
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                    
+                                    showStatus(`¡Éxito! Se descargó un .zip con ${vCardCount} QRs.`, "success");
+                                    
+                                    // Resetear UI
+                                    processButton.disabled = false;
+                                    processButton.textContent = "Procesar y Generar QRs";
+                                    fileInput.value = null; // Resetear input
+                                    csvFile = null;
+                                    fileNameDisplay.style.display = 'none';
+                                    processButton.style.display = 'none';
+
+                                })
+                                .catch(zipError => {
+                                    console.error("Error al generar el ZIP:", zipError);
+                                    showStatus("Error: No se pudo crear el archivo .zip.", "error");
+                                    processButton.disabled = false;
+                                    processButton.textContent = "Procesar y Generar QRs";
+                                });
+
+                        } else {
+                            // Este es un caso común si el CSV está vacío o las columnas no coinciden
+                            const expectedHeaders = ["Nombre y apellido", "Email", "WhatsApp", "Identificacion fiscal"];
+                            const actualHeaders = results.meta.fields ? results.meta.fields.join(', ') : 'ninguno';
+                            console.warn("Columnas esperadas:", expectedHeaders);
+                            console.warn("Columnas encontradas:", actualHeaders);
+                            
+                            let errorMsg = "Error: No se encontraron filas válidas (con Nombre y Email/WhatsApp) en el CSV.";
+                            if (results.meta.fields) {
+                                if (!results.meta.fields.includes("Nombre y apellido")) {
+                                    errorMsg += " La columna 'Nombre y apellido' no fue encontrada.";
+                                }
+                                if (!results.meta.fields.includes("Email") && !results.meta.fields.includes("WhatsApp")) {
+                                    errorMsg += " No se encontró la columna 'Email' ni 'WhatsApp'.";
+                                }
+                            }
+                            
+                            showStatus(errorMsg, "error");
+                            processButton.disabled = false;
+                            processButton.textContent = "Procesar y Generar QRs";
+                        }
+                    },
+                    error: (error) => {
+                        console.error("Error con PapaParse:", error);
+                        showStatus("Error: No se pudo leer el archivo CSV. Revisa el formato.", "error");
+                        processButton.disabled = false;
+                        processButton.textContent = "Procesar y Generar QRs";
+                    }
                 });
-            });
-        }
-
-        function processData(rows) {
-            return rows.map(row => {
-                const nameRaw = row['Nombre y apellido'] || '';
-                const emailRaw = row['Email'] || '';
-                const phoneRaw = row['WhatsApp'] || '';
-                const rutRaw = row['Identificacion fiscal'] || '';
-                
-                // Limpieza de datos
-                const name = nameRaw.trim().replace(/"/g, '');
-                const email = emailRaw.trim();
-                let phone = phoneRaw.trim().replace(/"/g, '').replace(/\s/g, '');
-                if (phone && !phone.startsWith('+')) {
-                    phone = `+${phone}`;
-                }
-                const rut = rutRaw.trim();
-                
-                // Solo crear vCard si tenemos datos útiles
-                if (name && (email || phone)) {
-                    const nameParts = name.split(' ');
-                    const lastName = nameParts.pop() || '';
-                    const firstName = nameParts.join(' ') || '';
-
-                    const vCardString = [
-                        'BEGIN:VCARD',
-                        'VERSION:3.0',
-                        `N:${lastName};${firstName};;;`,
-                        `FN:${name}`,
-                        email ? `EMAIL:${email}` : '',
-                        phone ? `TEL;TYPE=CELL:${phone}` : '',
-                        rut ? `NOTE:RUT: ${rut}` : '',
-                        'END:VCARD'
-                    ].filter(Boolean).join('\n');
-
-                    const safeFileName = name.replace(/[^a-z0-9_-\s]/gi, '').replace(/ /g, '_');
-                    
-                    return {
-                        fileName: `${safeFileName || 'contacto'}_${(rut || email || 'qr').replace(/[^a-z0-9]/gi, '')}.png`,
-                        vCard: vCardString
-                    };
-                }
-                return null;
-            }).filter(Boolean); // Quitar filas nulas (donde no había nombre, etc.)
-        }
-
-        async function generateZip(vCards) {
-            const zip = new JSZip();
-            const qrCanvas = document.createElement('canvas');
-
-            for (const item of vCards) {
-                const qr = new QRious({
-                    element: qrCanvas,
-                    value: item.vCard,
-                    size: 400,
-                    level: 'L'
-                });
-                
-                const blob = await new Promise(resolve => qrCanvas.toBlob(resolve, 'image/png'));
-                zip.file(item.fileName, blob);
             }
-            return zip;
-        }
 
+            /**
+             * Limpia los datos de una fila según los requisitos
+             */
+            function cleanData(row) {
+                // Usamos 'Nombre y apellido' y 'Identificacion fiscal' exactamente como en el CSV
+                // El archivo CSV de ejemplo usa "Identificacion fiscal" (sin tilde)
+                const nombre = (row["Nombre y apellido"] || "").trim().replace(/"/g, '');
+                const email = (row["Email"] || "").trim();
+                const fiscal = (row["Identificacion fiscal"] || "").trim();
+                
+                // Limpieza de WhatsApp (Quitar espacios, comillas y asegurar "+")
+                let whatsapp = (row["WhatsApp"] || "").trim().replace(/"/g, '').replace(/\s+/g, '');
+                
+                if (whatsapp && !whatsapp.startsWith('+')) {
+                    // Requisito: "asegurarse de que el número comience con +"
+                    // Si empieza con 569 (Chile, 11 dígitos), ya está casi listo
+                    if (whatsapp.startsWith('569') && whatsapp.length === 11) {
+                         whatsapp = `+${whatsapp}`;
+                    } 
+                    // Si solo es 9... (Chile, 9 dígitos)
+                    else if (whatsapp.startsWith('9') && whatsapp.length === 9) {
+                        whatsapp = `+56${whatsapp}`;
+                    }
+                    // Asunción genérica para otros números
+                    else if (whatsapp.length > 8) { 
+                         whatsapp = `+${whatsapp}`;
+                    } else {
+                        // Si es muy corto, probablemente no sea válido
+                        whatsapp = ""; 
+                    }
+                }
+                
+                // Separar Nombre y Apellido para la vCard
+                const nombreParts = nombre.split(' ');
+                const primerNombre = nombreParts.shift() || '';
+                const apellido = nombreParts.join(' ') || '';
+
+                return {
+                    nombre: nombre, // Nombre completo (FN)
+                    primerNombre: primerNombre, // N (Nombre)
+                    apellido: apellido, // N (Apellido)
+                    email: email,
+                    whatsapp: whatsapp,
+                    fiscal: fiscal // NOTE
+                };
+            }
+
+            /**
+             * Genera el string vCard (Versión 3.0)
+             */
+            function generateVCardString(data) {
+                let vCard = "BEGIN:VCARD\n";
+                vCard += "VERSION:3.0\n";
+                // N: Apellido;Nombre;SegundoNombre;Prefijo;Sufijo
+                vCard += `N:${data.apellido};${data.primerNombre};;;\n`;
+                // FN: Nombre Completo
+                vCard += `FN:${data.nombre}\n`;
+                
+                if (data.email) {
+                    vCard += `EMAIL;TYPE=INTERNET,PREF:${data.email}\n`;
+                }
+                
+                if (data.whatsapp) {
+                    // TEL;TYPE=CELL,VOICE;VALUE=uri:tel:+569123456
+                    vCard += `TEL;TYPE=CELL,VOICE;VALUE=uri:tel:${data.whatsapp}\n`;
+                }
+                
+                if (data.fiscal) {
+                    // El archivo de ejemplo usa "Identificacion fiscal"
+                    vCard += `NOTE:Identificacion fiscal: ${data.fiscal}\n`;
+                }
+                
+                vCard += "END:VCARD";
+                return vCard;
+            }
+            
+            /**
+             * Convierte un string a un formato seguro para nombre de archivo
+             */
+            function slugify(text) {
+                if (!text) return 'qr_sin_nombre';
+                return text.toString().toLowerCase()
+                    .replace(/\s+/g, '_')       // Reemplaza espacios con _
+                    .replace(/[^\w_.]+/g, '')   // Quita caracteres no alfanuméricos (excepto _ y .)
+                    .replace(/__+/g, '_')      // Reemplaza múltiples _ con uno solo
+                    .replace(/^_+/, '')       // Quita _ del inicio
+                    .replace(/_+$/, '');      // Quita _ del final
+            }
+
+            // --- Funciones de Utilidad para Feedback ---
+
+            function showStatus(message, type = 'loading') {
+                statusMessage.textContent = message;
+                statusMessage.className = type; // 'loading', 'success', 'error'
+                statusMessage.style.display = 'block';
+            }
+
+            function clearStatus() {
+                statusMessage.textContent = '';
+                statusMessage.style.display = 'none';
+            }
+        // CAMBIO: Se elimina el cierre del 'window.addEventListener'
     </script>
+
 </body>
 </html>
+

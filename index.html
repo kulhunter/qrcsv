@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v6 - CDN Alternativo)</title>
+    <title>Generador de Contactos QR (v7 - Local)</title>
     
-    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="papaparse.min.js"></script>
+    <script src="qrcode.min.js"></script>
 
     <style>
         body {
@@ -152,72 +152,57 @@
     </div>
 
     <script>
-        // Espera a que la página esté lista
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v6 (CDN Alternativo) cargado.");
+            console.log("Generador QR v7 (Local) cargado.");
 
-            // Referencias a los elementos del HTML
             const csvFile = document.getElementById('csvFile');
             const generateBtn = document.getElementById('generateBtn');
             const status = document.getElementById('status');
             const qrContainer = document.getElementById('qr-container');
-            let qrCount = 0; // Contador de QRs
+            let qrCount = 0;
 
-            // Función que se ejecuta al hacer clic en el botón
             generateBtn.addEventListener('click', () => {
                 
                 // VALIDACIÓN: Revisa si las librerías se cargaron
                 if (typeof Papa === 'undefined' || typeof QRCode === 'undefined') {
-                    console.error("¡ERROR FATAL! Las librerías (Papa o QRCode) NO se cargaron.");
-                    status.innerHTML = '<p style="color: red;">ERROR: Las librerías no se pudieron cargar. Revisa tu conexión a internet o el bloqueador de anuncios.</p>';
+                    console.error("¡ERROR FATAL! Las librerías (Papa o QRCode) NO se cargaron localmente.");
+                    status.innerHTML = '<p style="color: red;">ERROR: Las librerías locales no cargaron. Revisa que los archivos .js existan en tu repositorio.</p>';
                     return;
                 }
 
-                // 1. Revisa si hay un archivo
                 if (csvFile.files.length === 0) {
                     status.innerHTML = '<p style="color: red;">Por favor, selecciona un archivo CSV primero.</p>';
                     return;
                 }
 
                 const file = csvFile.files[0];
-                
-                // 2. Limpia la UI
                 qrContainer.innerHTML = '';
                 qrCount = 0;
                 status.innerHTML = '<div class="loader"></div> <p>Procesando archivo...</p>';
                 generateBtn.disabled = true;
 
-                console.log("Iniciando parseo de PapaParse...");
+                console.log("Iniciando parseo de PapaParse (local)...");
 
-                // 3. Usa PapaParse (que ahora SÍ debería existir)
                 Papa.parse(file, {
                     header: true,
                     skipEmptyLines: true,
-                    bom: true, // Por si acaso tu CSV tiene caracteres raros
+                    bom: true, 
                     
-                    // Procesa fila por fila
                     step: (results, parser) => {
                         const row = results.data;
-                        
-                        // Loguea la primera fila para confirmar
                         if (qrCount === 0) {
                             console.log("Datos de la primera fila procesada:", row);
                         }
-                        
                         try {
-                            // 4. Extrae los datos (igual que antes)
                             const name = row['Nombre y apellido'] ? row['Nombre y apellido'].trim() : '';
                             const email = row['Email'] ? row['Email'].trim() : '';
                             let phone = row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '';
 
                             if (!name && !email && !phone) {
-                                return; // Fila vacía, la salta
+                                return; 
                             }
 
-                            // 5. Crea la vCard
                             const vCard = createVCard(name, email, phone);
-                            
-                            // 6. Crea la tarjeta en el HTML
                             const card = document.createElement('div');
                             card.className = 'qr-card';
                             const title = document.createElement('p');
@@ -227,7 +212,6 @@
                             card.appendChild(qrCodeEl);
                             qrContainer.appendChild(card);
 
-                            // 7. Genera el QR
                             new QRCode(qrCodeEl, {
                                 text: vCard,
                                 width: 180,
@@ -237,12 +221,11 @@
                             qrCount++;
                         } catch (e) {
                             console.error("¡Error procesando una fila!:", e.message, "Datos:", row);
-                            parser.abort(); // Detiene todo si una fila falla
+                            parser.abort(); 
                             status.innerHTML = `<p style="color: red;">Error al procesar la fila ${qrCount + 1}. Revisa la consola.</p>`;
                         }
                     },
                     
-                    // Cuando termina...
                     complete: () => {
                         console.log(`Parseo completado. Total de QRs generados: ${qrCount}`);
                         if (qrCount > 0) {
@@ -253,16 +236,14 @@
                         generateBtn.disabled = false;
                     },
                     
-                    // Si PapaParse falla en general...
                     error: (err, file) => {
                         console.error("¡Error crítico de PapaParse!:", err);
-                        status.innerHTML = `<p style="color: red;">Error grave al leer el archivo: ${err.message}. Revisa la consola.</p>`;
+                        status.innerHTML = `<p style="color: red;">Error grave al leer el archivo: ${err.message}. Revisa la consola.</a/p>`;
                         generateBtn.disabled = false;
                     }
                 });
             });
 
-            // Función para crear el texto de la vCard
             function createVCard(name, email, phone) {
                 let vCard = "BEGIN:VCARD\nVERSION:3.0\n";
                 let nameParts = name.split(' ');
@@ -272,10 +253,10 @@
                     lastName = firstName;
                     firstName = '';
                 }
-                vCard += `N:${lastName};${firstName};;;\n`; // N:Apellido;Nombre
-                vCard += `FN:${name}\n`; // Nombre completo
-                if (phone) vCard += `TEL;TYPE=CELL:${phone}\n`; // Teléfono
-                if (email) vCard += `EMAIL:${email}\n`; // Email
+                vCard += `N:${lastName};${firstName};;;\n`; 
+                vCard += `FN:${name}\n`; 
+                if (phone) vCard += `TEL;TYPE=CELL:${phone}\n`; 
+                if (email) vCard += `EMAIL:${email}\n`; 
                 vCard += "END:VCARD";
                 return vCard;
             }

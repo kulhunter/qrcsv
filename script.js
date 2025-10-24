@@ -1,8 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- INICIO: DEBUG ---
+    console.log("Generador QR v4 cargado. ¡Listo para depurar!");
+    // --- FIN: DEBUG ---
+
     const csvFile = document.getElementById('csvFile');
     const generateBtn = document.getElementById('generateBtn');
     const status = document.getElementById('status');
     const qrContainer = document.getElementById('qr-container');
+
+    let qrCount = 0; // Mover el contador fuera
 
     generateBtn.addEventListener('click', () => {
         // 0. Revisar si hay un archivo
@@ -15,37 +21,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 1. Limpiar la UI y mostrar loader
         qrContainer.innerHTML = '';
+        qrCount = 0; // Resetear contador
         status.innerHTML = '<div class="loader"></div> <p>Procesando archivo...</p>';
         generateBtn.disabled = true;
 
+        // --- INICIO: DEBUG ---
+        console.log("Iniciando parseo de PapaParse...");
+        // --- FIN: DEBUG ---
+
         // 2. Usar PapaParse para leer el CSV
         Papa.parse(file, {
-            header: true, // ¡IMPORTANTE! Usa la primera fila como cabecera
+            header: true,
             skipEmptyLines: true,
-            bom: true, // NUEVO: Añadido para ignorar caracteres BOM de Excel
-            
-            complete: (results) => {
-                const data = results.data;
-                
-                if (data.length === 0) {
-                    status.innerHTML = '<p style="color: red;">El archivo está vacío o no se pudo leer.</p>';
-                    generateBtn.disabled = false;
-                    return;
-                }
+            bom: true, // Mantenemos esto por si acaso
 
-                // 3. Iterar por cada fila del CSV
-                let qrCount = 0;
-                for (const row of data) {
-                    
+            // USAMOS 'STEP' EN LUGAR DE 'COMPLETE' PARA PROCESAR FILA POR FILA
+            step: (results, parser) => {
+                const row = results.data;
+                
+                // --- INICIO: DEBUG ---
+                // Loguear la primera fila para ver si lee bien las cabeceras
+                if (qrCount === 0) {
+                    console.log("Datos de la primera fila procesada:", row);
+                }
+                // --- FIN: DEBUG ---
+
+                try {
                     // 4. EXTRAER Y LIMPIAR DATOS
                     const name = row['Nombre y apellido'] ? row['Nombre y apellido'].trim() : '';
                     const email = row['Email'] ? row['Email'].trim() : '';
                     let phone = row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '';
-                    
+
+                    // Si la fila no tiene ningún dato útil, la saltamos
                     if (!name && !email && !phone) {
-                        continue;
+                        return; // Salta a la siguiente fila
                     }
-                    
+
                     // 5. GENERAR EL TEXTO vCard
                     const vCard = createVCard(name, email, phone);
 
@@ -66,16 +77,39 @@ document.addEventListener('DOMContentLoaded', () => {
                         height: 180,
                         correctLevel: QRCode.CorrectLevel.M
                     });
-                    
-                    qrCount++;
-                }
 
-                // 8. Finalizar
-                status.innerHTML = `<p style="color: green;">¡Se generaron ${qrCount} códigos QR!</p>`;
+                    qrCount++;
+
+                } catch (e) {
+                    // --- INICIO: DEBUG ---
+                    console.error("¡Error procesando una fila!:", e.message);
+                    console.error("Datos de la fila que falló:", row);
+                    parser.abort(); // Detener el parseo si hay un error
+                    status.innerHTML = `<p style="color: red;">Error al procesar la fila ${qrCount + 1}. Revisa la consola.</p>`;
+                    // --- FIN: DEBUG ---
+                }
+            },
+
+            // USAMOS 'COMPLETE' SOLO PARA EL MENSAJE FINAL
+            complete: () => {
+                // --- INICIO: DEBUG ---
+                console.log(`Parseo completado. Total de QRs generados: ${qrCount}`);
+                // --- FIN: DEBUG ---
+                
+                if (qrCount > 0) {
+                    status.innerHTML = `<p style="color: green;">¡Se generaron ${qrCount} códigos QR!</p>`;
+                } else {
+                    status.innerHTML = `<p style="color: red;">No se encontraron datos válidos para generar QRs. Revisa el archivo.</p>`;
+                }
                 generateBtn.disabled = false;
             },
-            error: (err) => {
-                status.innerHTML = `<p style="color: red;">Error al procesar el archivo: ${err.message}</p>`;
+
+            // AÑADIMOS UN MANEJADOR DE ERRORES ROBUSTO
+            error: (err, file) => {
+                // --- INICIO: DEBUG ---
+                console.error("¡Error crítico de PapaParse!:", err);
+                // --- FIN: DEBUG ---
+                status.innerHTML = `<p style="color: red;">Error grave al leer el archivo: ${err.message}. Revisa la consola.</p>`;
                 generateBtn.disabled = false;
             }
         });
@@ -96,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
             lastName = firstName;
             firstName = '';
         }
-        
+
         vCard += `N:${lastName};${firstName};;;\n`;
         vCard += `FN:${name}\n`;
 

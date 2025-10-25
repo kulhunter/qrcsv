@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v10 - Anti-crash)</title>
+    <title>Generador de Contactos QR (v11 - Final)</title>
     
     <script src="papaparse.min.js"></script>
     <script src="qrcode.min.js"></script>
@@ -107,7 +107,7 @@
             align-items: center;
             justify-content: center;
             gap: 10px;
-            flex-wrap: wrap; /* Para que el mensaje de error no se corte */
+            flex-wrap: wrap;
         }
         .loader {
             width: 20px;
@@ -136,7 +136,7 @@
             text-align: center;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             transition: transform 0.2s, box-shadow 0.2s;
-            display: block; /* Para que el buscador funcione bien con las tarjetas que fallan */
+            display: block; 
         }
         .qr-card:hover {
             transform: translateY(-5px);
@@ -188,7 +188,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v10 (Anti-crash) cargado.");
+            console.log("Generador QR v11 (Solución Overflow y Título) cargado.");
 
             // Referencias
             const csvFile = document.getElementById('csvFile');
@@ -199,7 +199,7 @@
             const qrContainer = document.getElementById('qr-container');
             
             let qrCount = 0;
-            let qrErrors = 0; // <-- NUEVO: Contador de errores
+            let qrErrors = 0; 
             let generatedQRs = []; 
 
             // ---- Evento "Generar QRs" ----
@@ -219,7 +219,7 @@
                 const file = csvFile.files[0];
                 qrContainer.innerHTML = '';
                 qrCount = 0;
-                qrErrors = 0; // <-- NUEVO: Resetear contador de errores
+                qrErrors = 0; 
                 generatedQRs = []; 
                 downloadBtn.style.display = 'none';
                 searchBox.style.display = 'none';
@@ -235,48 +235,55 @@
                     skipEmptyLines: true,
                     bom: true, 
                     
-                    // Procesar fila por fila
                     step: (results, parser) => {
                         const row = results.data;
-                        if (qrCount === 0 && qrErrors === 0) { // Loguear solo la primera vez
+                        if (qrCount === 0 && qrErrors === 0) {
                             console.log("Datos de la primera fila procesada:", row);
                         }
                         
-                        // Truncar datos (máximo 100 caracteres)
-                        const MAX_LEN = 100;
-                        const name = (row['Nombre y apellido'] ? row['Nombre y apellido'].trim() : '').substring(0, MAX_LEN);
-                        const email = (row['Email'] ? row['Email'].trim() : '').substring(0, MAX_LEN);
-                        let phone = (row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '').substring(0, 20);
+                        // ---- ¡CAMBIO CLAVE 1: Solución Overflow! ----
+                        // Truncamos los datos de forma más agresiva
+                        const MAX_NAME_LEN = 60; // Límite de 60 caracteres
+                        const MAX_EMAIL_LEN = 80; // Límite de 80 caracteres
+                        const MAX_PHONE_LEN = 20; // Límite de 20 caracteres
+
+                        const name = (row['Nombre y apellido'] ? row['Nombre y apellido'].trim() : '').substring(0, MAX_NAME_LEN);
+                        const email = (row['Email'] ? row['Email'].trim() : '').substring(0, MAX_EMAIL_LEN);
+                        let phone = (row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '').substring(0, MAX_PHONE_LEN);
 
                         if (!name && !email && !phone) {
                             return; // Saltar fila vacía
                         }
 
-                        // 1. Crear VCard
                         const vCard = createVCard(name, email, phone);
-                        
-                        // 2. Crear Tarjeta HTML
                         const card = document.createElement('div');
                         card.className = 'qr-card';
+                        
+                        // ---- ¡CAMBIO CLAVE 3: Solución Buscador! ----
+                        // Guardar todos los datos en un atributo para que el buscador funcione
+                        card.setAttribute('data-search-text', `${name} | ${email} | ${phone}`);
+
                         const title = document.createElement('p');
-                        title.textContent = `${name} | ${email} | ${phone}`;
+                        
+                        // ---- ¡CAMBIO CLAVE 2: Solución Título! ----
+                        // Mostrar solo el nombre (o email/tel si no hay nombre)
+                        title.textContent = name || email || phone;
+                        
                         card.appendChild(title);
                         const qrCodeEl = document.createElement('div');
                         card.appendChild(qrCodeEl);
                         qrContainer.appendChild(card);
 
-                        // 3. Generar QR (con try/catch individual)
+                        // Generar QR (con try/catch individual)
                         try {
                             new QRCode(qrCodeEl, {
                                 text: vCard,
                                 width: 180,
                                 height: 180,
-                                // ---- ¡CAMBIO CLAVE 1! ----
-                                // Nivel 'L' (Low) permite MÁS DATOS que 'M' (Medium)
-                                correctLevel: QRCode.CorrectLevel.L 
+                                correctLevel: QRCode.CorrectLevel.L // Nivel 'Bajo' para más datos
                             });
                             
-                            // 4. Guardar para ZIP (solo si tuvo éxito)
+                            // Guardar para ZIP (solo si tuvo éxito)
                             setTimeout(() => {
                                 const canvas = qrCodeEl.querySelector('canvas');
                                 if (canvas) {
@@ -289,15 +296,13 @@
                             qrCount++; // Contar solo los exitosos
                             
                         } catch (e) {
-                            // ---- ¡CAMBIO CLAVE 2! ----
-                            // El parser YA NO SE DETIENE (eliminamos 'parser.abort()')
-                            
-                            qrErrors++; // Contar el error
+                            // Si falla, NO detiene el script
+                            qrErrors++;
                             console.error(`¡Error procesando fila (Nombre: ${name})!`, e.message, "Datos:", row);
                             
                             // Mostrar error en la tarjeta específica
                             title.innerHTML = `<span style="color: red; font-weight: bold;">ERROR</span><br>${name}`;
-                            qrCodeEl.innerHTML = `<p style="font-size: 0.8rem; color: red; word-wrap: break-word;">Datos muy largos para QR.<br>(${e.message})</p>`;
+                            qrCodeEl.innerHTML = `<p style="font-size: 0.8rem; color: red; word-wrap: break-word;">Datos muy largos para QR.</p>`;
                         }
                     },
                     
@@ -306,7 +311,6 @@
                         console.log(`Parseo completado. ${qrCount} QRs generados, ${qrErrors} errores.`);
                         
                         if (qrCount > 0) {
-                            // Mostrar mensaje de éxito (incluso si hubo errores)
                             let statusMsg = `<p style="color: green;">¡Se generaron ${qrCount} códigos QR!</p>`;
                             if (qrErrors > 0) {
                                 statusMsg += ` <p style="color: red;">(${qrErrors} fila${qrErrors > 1 ? 's' : ''} fallaron).</p>`;
@@ -317,17 +321,14 @@
                             searchBox.style.display = 'block'; 
                         
                         } else if (qrErrors > 0) {
-                            // Si solo hubo errores
                             status.innerHTML = `<p style="color: red;">No se pudo generar ningún QR. ${qrErrors} filas fallaron.</p>`;
                         } else {
-                            // Si no hubo QRs ni errores (archivo vacío)
                             status.innerHTML = `<p style="color: red;">No se encontraron datos válidos para generar QRs.</p>`;
                         }
                         
                         generateBtn.disabled = false;
                     },
                     
-                    // Si PapaParse falla
                     error: (err, file) => {
                         console.error("¡Error crítico de PapaParse!:", err);
                         status.innerHTML = `<p style="color: red;">Error grave al leer el archivo: ${err.message}.</p>`;
@@ -336,14 +337,17 @@
                 });
             });
 
-            // ---- Evento del Buscador ----
+            // ---- Evento del Buscador (ACTUALIZADO) ----
             searchBox.addEventListener('input', () => {
                 const query = searchBox.value.toLowerCase().trim();
                 const allCards = document.querySelectorAll('.qr-card');
                 
                 allCards.forEach(card => {
-                    const name = card.querySelector('p').textContent.toLowerCase();
-                    if (name.includes(query)) {
+                    // ---- ¡CAMBIO CLAVE 3.1! ----
+                    // Buscar en el atributo 'data-search-text'
+                    const searchableText = card.getAttribute('data-search-text').toLowerCase();
+                    
+                    if (searchableText.includes(query)) {
                         card.style.display = 'block';
                     } else {
                         card.style.display = 'none';
@@ -357,7 +361,6 @@
                     alert("Error: La librería JSZip no se cargó. Refresca la página.");
                     return;
                 }
-                // Descarga solo los QRs que SÍ se generaron
                 if (generatedQRs.length === 0) { 
                     alert("No hay QRs exitosos para descargar.");
                     return;

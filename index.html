@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v11 - Final)</title>
+    <title>Generador de Contactos QR (v12 - Anti-Bug)</title>
     
     <script src="papaparse.min.js"></script>
     <script src="qrcode.min.js"></script>
@@ -152,7 +152,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100px; /* Espacio para el mensaje de error */
+            min-height: 100px;
         }
     </style>
 </head>
@@ -188,7 +188,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v11 (Solución Overflow y Título) cargado.");
+            console.log("Generador QR v12 (Anti-Bug) cargado.");
 
             // Referencias
             const csvFile = document.getElementById('csvFile');
@@ -241,14 +241,14 @@
                             console.log("Datos de la primera fila procesada:", row);
                         }
                         
-                        // ---- ¡CAMBIO CLAVE 1: Solución Overflow! ----
-                        // Truncamos los datos de forma más agresiva
-                        const MAX_NAME_LEN = 60; // Límite de 60 caracteres
-                        const MAX_EMAIL_LEN = 80; // Límite de 80 caracteres
-                        const MAX_PHONE_LEN = 20; // Límite de 20 caracteres
+                        const MAX_NAME_LEN = 60;
+                        const MAX_EMAIL_LEN = 80;
+                        const MAX_PHONE_LEN = 20;
 
-                        const name = (row['Nombre y apellido'] ? row['Nombre y apellido'].trim() : '').substring(0, MAX_NAME_LEN);
-                        const email = (row['Email'] ? row['Email'].trim() : '').substring(0, MAX_EMAIL_LEN);
+                        // ---- ¡CAMBIO CLAVE (v12): Conversión forzada a String! ----
+                        // Esto evita errores si el campo es 'null' o un número
+                        const name = (row['Nombre y apellido'] ? String(row['Nombre y apellido']).trim() : '').substring(0, MAX_NAME_LEN);
+                        const email = (row['Email'] ? String(row['Email']).trim() : '').substring(0, MAX_EMAIL_LEN);
                         let phone = (row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '').substring(0, MAX_PHONE_LEN);
 
                         if (!name && !email && !phone) {
@@ -259,13 +259,11 @@
                         const card = document.createElement('div');
                         card.className = 'qr-card';
                         
-                        // ---- ¡CAMBIO CLAVE 3: Solución Buscador! ----
                         // Guardar todos los datos en un atributo para que el buscador funcione
                         card.setAttribute('data-search-text', `${name} | ${email} | ${phone}`);
 
                         const title = document.createElement('p');
                         
-                        // ---- ¡CAMBIO CLAVE 2: Solución Título! ----
                         // Mostrar solo el nombre (o email/tel si no hay nombre)
                         title.textContent = name || email || phone;
                         
@@ -337,14 +335,12 @@
                 });
             });
 
-            // ---- Evento del Buscador (ACTUALIZADO) ----
+            // ---- Evento del Buscador ----
             searchBox.addEventListener('input', () => {
                 const query = searchBox.value.toLowerCase().trim();
                 const allCards = document.querySelectorAll('.qr-card');
                 
                 allCards.forEach(card => {
-                    // ---- ¡CAMBIO CLAVE 3.1! ----
-                    // Buscar en el atributo 'data-search-text'
                     const searchableText = card.getAttribute('data-search-text').toLowerCase();
                     
                     if (searchableText.includes(query)) {

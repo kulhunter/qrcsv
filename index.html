@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v25 - Asíncrono)</title>
-    
+    <title>Generador de Contactos QR (v26 - Ajustes Finales)</title>
+
     <script src="papaparse.min.js"></script>
     <script src="qrcode.min.js"></script>
     <script src="jszip.min.js"></script>
 
     <style>
-        /* Estilos (iguales que v24) */
+        /* Estilos (iguales que v25) */
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
         .app-container { max-width: 1000px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.07); overflow: hidden; }
         header { background-color: #007bff; color: white; padding: 25px 30px; text-align: center; }
@@ -39,12 +39,12 @@
         #qr-container-message { text-align: center; color: #777; font-size: 1.1rem; padding: 20px; border: 2px dashed #eee; border-radius: 8px; display: none; }
         .qr-card { background-color: #fdfdfd; border: 1px solid #eee; border-radius: 10px; padding: 15px; text-align: center; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05); display: block; }
         .qr-card p { font-weight: 600; margin: 0 0 10px 0; font-size: 0.95rem; word-wrap: break-word; }
-        .qr-card div { display: flex; justify-content: center; align-items: center; min-height: 100px; }
+        .qr-card div { display: flex; justify-content: center; align-items: center; min-height: 180px; } /* Altura mínima para QR de 180px */
     </style>
 </head>
 <body>
 
-    <div id="qr-factory" style="position: absolute; top: -9999px; left: -9999px; width: 200px; height: 200px; overflow: hidden;"></div>
+    <div id="qr-factory" style="position: absolute; top: -9999px; left: -9999px; width: 550px; height: 550px; overflow: hidden;"></div>
 
     <div class="app-container">
         <header>
@@ -56,7 +56,7 @@
                 <input type="file" id="csvFile" accept=".csv">
                 <button id="generateBtn">Generar QRs</button>
             </div>
-            
+
             <div id="status">
                 <p>Por favor, selecciona un archivo CSV.</p>
             </div>
@@ -79,7 +79,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v25 (Asíncrono por Lotes) cargado.");
+            console.log("Generador QR v26 (Ajustes Finales) cargado.");
 
             // Referencias
             const csvFile = document.getElementById('csvFile');
@@ -90,34 +90,40 @@
             const qrContainer = document.getElementById('qr-container');
             const qrContainerMessage = document.getElementById('qr-container-message');
             const qrFactory = document.getElementById('qr-factory');
-            
+
             let qrCount = 0;
-            let qrErrors = 0; 
+            let qrErrors = 0;
             let generatedQRs = []; // Para el ZIP
             let searchableData = []; // Para el buscador
+            let rowIndexCounter = 0; // Contador global de filas
 
             // Función para "latinizar" (quitar acentos)
             function latinize(str) {
                 if (!str) return '';
                 return String(str)
-                    .normalize("NFD") 
-                    .replace(/[\u0300-\u036f]/g, "") 
-                    .replace(/[^ \w.-@]/g, ''); 
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "")
+                    .replace(/[^ \w.-@]/g, '');
             }
-            
-            // ---- ¡CAMBIO v25: Generador ASÍNCRONO para el ZIP! ----
-            function generateQrForZipAsync(vCard, name) {
-                return new Promise((resolve, reject) => {
+
+            // ---- ¡CAMBIO v26: Generador ASÍNCRONO para el ZIP (500px y número)! ----
+            function generateQrForZipAsync(vCard, name, rowIndex) {
+                 return new Promise((resolve, reject) => {
                     const tempDiv = document.createElement('div');
-                    qrFactory.appendChild(tempDiv); // Conectar al DOM oculto
+                    qrFactory.appendChild(tempDiv);
+
+                    // CAMBIO v26: Tamaño 500px
+                    const qrSize = 500;
+                    const textHeight = 40; // Más espacio para el número (fuente más grande)
+                    const paddedIndex = String(rowIndex).padStart(5, '0'); // Número de fila con 5 dígitos
 
                     try {
-                        // Crear instancia de QRCode
+                        // Crear instancia de QRCode para este QR específico
                         new QRCode(tempDiv, {
                             text: vCard,
-                            width: 180,
-                            height: 180,
-                            correctLevel: QRCode.CorrectLevel.L
+                            width: qrSize, // 500px
+                            height: qrSize, // 500px
+                            correctLevel: QRCode.CorrectLevel.L // Nivel bajo permite más datos
                         });
 
                         // Esperar un instante para que el canvas se dibuje
@@ -126,31 +132,37 @@
                                 const qrCanvas = tempDiv.querySelector('canvas');
                                 if (!qrCanvas) {
                                     qrFactory.removeChild(tempDiv);
-                                    reject(new Error("Canvas no creado para: " + name));
+                                    reject(new Error("Canvas no creado para: " + name + " (Fila " + rowIndex + ")"));
                                     return;
                                 }
 
-                                // Crear imagen final (QR + Nombre)
-                                const qrSize = 180;
-                                const textHeight = 30;
+                                // Crear imagen final (QR + Número)
                                 const finalCanvas = document.createElement('canvas');
                                 finalCanvas.width = qrSize;
-                                finalCanvas.height = qrSize + textHeight;
+                                finalCanvas.height = qrSize + textHeight; // Altura total
                                 const ctx = finalCanvas.getContext('2d');
+
+                                // Fondo blanco
                                 ctx.fillStyle = 'white';
                                 ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-                                ctx.drawImage(qrCanvas, 0, 0);
-                                ctx.fillStyle = 'black';
-                                ctx.font = '16px Arial';
-                                ctx.textAlign = 'center';
-                                ctx.fillText(name, qrSize / 2, qrSize + 20);
 
+                                // Dibujar QR 500x500
+                                ctx.drawImage(qrCanvas, 0, 0);
+
+                                // CAMBIO v26: Dibujar el número de fila
+                                ctx.fillStyle = 'black';
+                                ctx.font = '24px Arial'; // Tamaño de fuente para el número
+                                ctx.textAlign = 'center';
+                                // Posicionar el número centrado debajo del QR
+                                ctx.fillText(paddedIndex, qrSize / 2, qrSize + textHeight - 10);
+
+                                // Obtener datos de la imagen final
                                 const finalImageData = finalCanvas.toDataURL('image/png').split(',')[1];
-                                qrFactory.removeChild(tempDiv); // Limpiar
+                                qrFactory.removeChild(tempDiv); // Limpiar el div temporal
                                 resolve(finalImageData); // Éxito: devolver datos de imagen
 
                             } catch (innerError) {
-                                qrFactory.removeChild(tempDiv); // Limpiar
+                                qrFactory.removeChild(tempDiv); // Limpiar en caso de error interno
                                 reject(innerError); // Error interno (ej. toDataURL)
                             }
                         }, 0); // setTimeout 0: esperar al siguiente ciclo de eventos
@@ -162,30 +174,36 @@
                     }
                 });
             }
-            
+
+
             // ---- Evento "Generar QRs" ----
             generateBtn.addEventListener('click', () => {
-                
+
+                if (typeof JSZip === 'undefined') {
+                     console.error("¡ERROR FATAL! La librería JSZip NO se cargó.");
+                     status.innerHTML = '<p style="color: red;">ERROR CRÍTICO: Falta el archivo jszip.min.js.</p>';
+                }
                 if (typeof Papa === 'undefined' || typeof QRCode === 'undefined') {
-                    console.error("¡ERROR FATAL! Las librerías no se cargaron.");
-                    status.innerHTML = '<p style="color: red;">ERROR: Las librerías locales no cargaron. Refresca la página.</p>';
+                    console.error("¡ERROR FATAL! PapaParse o QRCode NO se cargaron.");
+                     status.innerHTML = '<p style="color: red;">ERROR: Librerías PapaParse o QRCode no cargaron.</p>';
                     return;
                 }
-                if (csvFile.files.length === 0) {
+                 if (csvFile.files.length === 0) {
                     status.innerHTML = '<p style="color: red;">Por favor, selecciona un archivo CSV primero.</p>';
                     return;
                 }
 
-                // Resetear UI
+                // Resetear UI y contadores
                 const file = csvFile.files[0];
-                qrContainer.innerHTML = ''; 
-                qrContainer.appendChild(qrContainerMessage); 
+                qrContainer.innerHTML = '';
+                qrContainer.appendChild(qrContainerMessage);
                 qrContainerMessage.style.display = 'none';
                 qrFactory.innerHTML = '';
                 qrCount = 0;
-                qrErrors = 0; 
+                qrErrors = 0;
                 generatedQRs = [];
-                searchableData = []; 
+                searchableData = [];
+                rowIndexCounter = 0; // Resetear contador de filas
                 downloadBtn.style.display = 'none';
                 searchBox.style.display = 'none';
                 searchBox.value = '';
@@ -193,18 +211,18 @@
                 generateBtn.disabled = true;
 
                 console.log("Iniciando Fase 1: Lectura...");
-                let allRows = []; 
+                let allRows = [];
 
                 // Fase 1: Leer todo el CSV a la memoria
                 Papa.parse(file, {
                     header: true,
                     skipEmptyLines: true,
-                    bom: true, 
-                    
+                    bom: true,
+
                     step: (results, parser) => {
-                        allRows.push(results.data); 
+                        allRows.push(results.data);
                     },
-                    
+
                     complete: () => {
                         console.log(`Lectura completada. ${allRows.length} filas leídas.`);
                         if (allRows.length === 0) {
@@ -213,9 +231,9 @@
                             return;
                         }
                         // Iniciar Fase 2: Procesamiento ASÍNCRONO por lotes
-                        processInBatches(allRows, 0); 
+                        processInBatches(allRows, 0);
                     },
-                    
+
                     error: (err, file) => {
                         console.error("¡Error crítico de PapaParse!:", err);
                         status.innerHTML = `<p style="color: red;">Error grave al leer el archivo: ${err.message}.</p>`;
@@ -223,20 +241,22 @@
                     }
                 });
             });
-            
-            // ---- ¡CAMBIO v25: Función ASÍNCRONA de procesamiento por lotes! ----
+
+            // Función ASÍNCRONA de procesamiento por lotes
             async function processInBatches(rows, index) {
-                const batchSize = 50; // Procesar de 50 en 50
+                const batchSize = 50; // Ajustar si es necesario (menos = más lento pero más estable)
                 const totalRows = rows.length;
-                
+
                 status.innerHTML = `<div class="loader"></div> <p>Procesando QRs... (${index} / ${totalRows})</p>`;
-                
+
                 let currentBatchEnd = Math.min(index + batchSize, totalRows);
-                let batchPromises = []; // Array para las promesas de este lote
-                
+                let batchPromises = [];
+
                 for (let i = index; i < currentBatchEnd; i++) {
+                    rowIndexCounter++; // Incrementar contador ANTES de procesar
+                    const currentRowIndex = rowIndexCounter;
                     const row = rows[i];
-                    
+
                     const MAX_NAME_LEN = 60;
                     const MAX_EMAIL_LEN = 80;
                     const MAX_PHONE_LEN = 20;
@@ -249,36 +269,40 @@
                     // Filtro 1
                     if (!originalName && !originalEmail && !originalPhone) {
                         qrErrors++;
-                        continue; // Saltar al siguiente 'for'
+                        continue;
                     }
-                    
+
                     // 2. Datos "latinizados"
                     const qrName = latinize(originalName);
                     const qrEmail = latinize(originalEmail);
                     const qrPhone = latinize(originalPhone);
-                    
+
                     // Filtro 2
                     if (!qrName && !qrEmail && !qrPhone) {
-                        console.warn("Fila saltada (datos vacíos después de latinizar):", row);
+                        console.warn(`Fila ${currentRowIndex} saltada (datos vacíos después de latinizar):`, row);
                         qrErrors++;
-                        continue; // Saltar al siguiente 'for'
+                        continue;
                     }
 
-                    const vCard = createVCard(qrName, qrEmail, qrPhone); 
-                    
-                    // 3. Crear Promesa para generar QR para ZIP
-                    const promise = generateQrForZipAsync(vCard, originalName)
+                    const vCard = createVCard(qrName, qrEmail, qrPhone);
+
+                    // 3. Crear Promesa para generar QR para ZIP (pasar índice)
+                    const promise = generateQrForZipAsync(vCard, originalName, currentRowIndex)
                         .then(finalImageData => {
                             if (finalImageData) {
-                                const filename = (originalName || originalEmail || originalPhone).replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png'; 
+                                // CAMBIO v26: Nuevo formato de nombre de archivo
+                                const paddedIndex = String(currentRowIndex).padStart(5, '0');
+                                // Usar nombre original limpio para el archivo
+                                const safeName = (originalName || originalEmail || originalPhone).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                                const filename = `${paddedIndex}_${safeName}.png`;
+
                                 generatedQRs.push({ filename: filename, data: finalImageData });
-                                
-                                // Guardar también para el buscador
+
                                 searchableData.push({
                                     name: originalName,
                                     email: originalEmail,
                                     phone: originalPhone,
-                                    vCard: vCard 
+                                    vCard: vCard // Guardar vCard para el buscador
                                 });
                                 qrCount++;
                             } else {
@@ -287,21 +311,20 @@
                             }
                         })
                         .catch(error => {
-                            // Error en la promesa (ej. canvas no creado)
                             qrErrors++;
-                            console.error(`¡Error ASÍNCRONO procesando fila (Nombre: ${originalName})!`, error);
+                            console.error(`¡Error ASÍNCRONO procesando fila ${currentRowIndex} (Nombre: ${originalName})!`, error);
                         });
-                        
-                    batchPromises.push(promise); // Añadir promesa al lote
+
+                    batchPromises.push(promise);
                 }
-                
+
                 // Esperar a que TODAS las promesas del lote actual terminen
                 try {
-                    await Promise.all(batchPromises);
+                     await Promise.all(batchPromises);
                 } catch (batchError) {
-                    // Aunque Promise.all rechaza al primer error, los catch individuales ya contaron los errores
-                    console.error("Error en un lote de procesamiento:", batchError); 
+                    console.error("Error en un lote de procesamiento:", batchError);
                 }
+
 
                 // Chequear si hemos terminado
                 if (currentBatchEnd < totalRows) {
@@ -312,54 +335,57 @@
                 } else {
                     // ¡Terminamos todos los lotes!
                     console.log(`Procesamiento completado. ${qrCount} QRs generados, ${qrErrors} filas saltadas/fallidas.`);
-                    
+
                     qrFactory.innerHTML = ''; // Limpiar fábrica
-                    
+
                     if (qrCount > 0) {
                         let statusMsg = `<p style="color: green;">¡Se generaron ${qrCount} códigos QR!</p>`;
                         if (qrErrors > 0) {
                             statusMsg += ` <p style="color: red;">(${qrErrors} fila${qrErrors > 1 ? 's' : ''} saltadas/fallidas).</p>`;
                         }
                         status.innerHTML = statusMsg;
-                        
-                        downloadBtn.style.display = 'block'; 
-                        searchBox.style.display = 'block'; 
+
+                        if (typeof JSZip !== 'undefined') {
+                             downloadBtn.style.display = 'block';
+                        } else {
+                             status.innerHTML += '<p style="color: red; font-weight: bold;">ERROR: Falta jszip.min.js.</p>';
+                        }
+                        searchBox.style.display = 'block';
                         qrContainerMessage.style.display = 'block';
                     } else {
-                         status.innerHTML = `<p style="color: red;">No se pudo generar ningún QR. ${qrErrors} filas fallaron.</p>`;
+                         status.innerHTML = `<p style="color: red;">No se pudo generar ningún QR. ${qrErrors > 0 ? qrErrors + ' filas fallaron.' : ''}</p>`;
                     }
-                    
+
                     generateBtn.disabled = false;
                 }
             }
 
 
-            // ---- Evento del Buscador (Dibuja al buscar) ----
+            // ---- Evento del Buscador (Dibuja al buscar QRs de 180px) ----
             searchBox.addEventListener('input', () => {
                 const query = searchBox.value.toLowerCase().trim();
-                
-                qrContainer.innerHTML = ''; 
-                
-                if (query.length < 2) { 
+                qrContainer.innerHTML = ''; // Limpiar resultados anteriores
+
+                if (query.length < 2) {
                     qrContainer.appendChild(qrContainerMessage);
                     qrContainerMessage.style.display = 'block';
                     qrContainerMessage.querySelector('p').textContent = 'Escribe al menos 2 letras para buscar...';
                     return;
                 }
 
-                const results = searchableData.filter(item => 
+                const results = searchableData.filter(item =>
                     item.name.toLowerCase().includes(query) ||
                     item.email.toLowerCase().includes(query) ||
                     item.phone.includes(query)
                 );
-                
-                const maxResults = 50; 
+
+                const maxResults = 50;
                 const limitedResults = results.slice(0, maxResults);
-                
+
                 if (limitedResults.length > 0) {
                     const grid = document.createElement('div');
                     grid.className = 'qr-results-grid';
-                    
+
                     limitedResults.forEach(item => {
                         const card = document.createElement('div');
                         card.className = 'qr-card';
@@ -368,19 +394,24 @@
                         card.appendChild(title);
                         const qrCodeEl = document.createElement('div');
                         card.appendChild(qrCodeEl);
-                        
-                        // Generar el QR visible (rápido para 50)
-                        new QRCode(qrCodeEl, {
-                            text: item.vCard,
-                            width: 180,
-                            height: 180,
-                            correctLevel: QRCode.CorrectLevel.L
-                        });
+
+                        try {
+                             // Generar QR para visualización (180px)
+                             new QRCode(qrCodeEl, {
+                                text: item.vCard,
+                                width: 180,
+                                height: 180,
+                                correctLevel: QRCode.CorrectLevel.L
+                             });
+                        } catch(e) {
+                             qrCodeEl.innerHTML = '<p style="color:red; font-size: 0.8em;">Error al mostrar QR</p>';
+                             console.error("Error al DIBUJAR QR buscado:", item.name, e);
+                        }
                         grid.appendChild(card);
                     });
-                    
+
                     qrContainer.appendChild(grid);
-                    
+
                     if (results.length > maxResults) {
                         const infoMsg = document.createElement('p');
                         infoMsg.textContent = `Mostrando ${maxResults} de ${results.length} resultados. Afina tu búsqueda.`;
@@ -398,10 +429,10 @@
             // ---- Evento del botón "Descargar ZIP" ----
             downloadBtn.addEventListener('click', () => {
                 if (typeof JSZip === 'undefined') {
-                    alert("Error: La librería JSZip no se cargó. Refresca la página.");
+                    alert("Error CRÍTICO: La librería para crear ZIPs (jszip.min.js) no está disponible.");
                     return;
                 }
-                if (generatedQRs.length === 0) { 
+                 if (generatedQRs.length === 0) {
                     alert("No hay QRs exitosos para descargar.");
                     return;
                 }
@@ -411,7 +442,7 @@
                 downloadBtn.textContent = 'Comprimiendo...';
 
                 const zip = new JSZip();
-                
+
                 for (const qr of generatedQRs) {
                     zip.file(qr.filename, qr.data, { base64: true });
                 }
@@ -425,7 +456,7 @@
                         link.click();
                         document.body.removeChild(link);
                         URL.revokeObjectURL(link.href);
-                        
+
                         console.log("¡ZIP generado y descargado!");
                         downloadBtn.disabled = false;
                         downloadBtn.textContent = 'Descargar ZIP';
@@ -448,10 +479,10 @@
                     lastName = firstName;
                     firstName = '';
                 }
-                vCard += `N:${lastName};${firstName};;;\n`; 
-                vCard += `FN:${name}\n`; 
-                if (phone) vCard += `TEL;TYPE:CELL:${phone}\n`; 
-                if (email) vCard += `EMAIL:${email}\n`; 
+                vCard += `N:${lastName};${firstName};;;\n`;
+                vCard += `FN:${name}\n`;
+                if (phone) vCard += `TEL;TYPE=CELL:${phone}\n`;
+                if (email) vCard += `EMAIL:${email}\n`;
                 vCard += "END:VCARD";
                 return vCard;
             }

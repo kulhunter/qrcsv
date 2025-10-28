@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v18 - Anti-Crash)</title>
+    <title>Generador de Contactos QR (v19 - ZIP Corregido)</title>
     
     <script src="papaparse.min.js"></script>
     <script src="qrcode.min.js"></script>
@@ -202,7 +202,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v18 (Anti-Crash) cargado.");
+            console.log("Generador QR v19 (ZIP Corregido) cargado.");
 
             // Referencias
             const csvFile = document.getElementById('csvFile');
@@ -225,27 +225,6 @@
                 height: 180,
                 correctLevel: QRCode.CorrectLevel.L
             });
-            
-            // Función para crear la imagen final (QR + Nombre)
-            function createFinalImage(qrCanvas, name) {
-                const qrSize = 180;
-                const textHeight = 30;
-                const finalCanvas = document.createElement('canvas');
-                finalCanvas.width = qrSize;
-                finalCanvas.height = qrSize + textHeight;
-                const ctx = finalCanvas.getContext('2d');
-                
-                ctx.fillStyle = 'white';
-                ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-                ctx.drawImage(qrCanvas, 0, 0);
-                
-                ctx.fillStyle = 'black';
-                ctx.font = '16px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(name, qrSize / 2, qrSize + 20); 
-
-                return finalCanvas.toDataURL('image/png').split(',')[1];
-            }
 
             // Función para "latinizar" (quitar acentos)
             function latinize(str) {
@@ -317,25 +296,44 @@
                         const qrEmail = latinize(originalEmail);
                         const qrPhone = latinize(originalPhone);
                         
-                        // ---- ¡CAMBIO CLAVE v18: Segundo Filtro! ----
-                        // Si después de latinizar no queda NADA, la vCard estaría vacía y rompería el generador.
+                        // Filtro 2: Saltar si la fila "limpia" está vacía
                         if (!qrName && !qrEmail && !qrPhone) {
                             console.warn("Fila saltada (datos vacíos después de latinizar):", row);
-                            qrErrors++; // Contar como fila fallida/saltada
-                            return; // Saltar esta fila para no romper el 'qrInstance'
+                            qrErrors++;
+                            return; 
                         }
-                        // ---------------------------------------------
 
                         const vCard = createVCard(qrName, qrEmail, qrPhone); 
                         
                         // 3. Generar QR en memoria
                         try {
-                            qrInstance.clear(); // Limpiar la instancia
-                            qrInstance.makeCode(vCard); // Generar el nuevo QR
+                            qrInstance.clear(); 
+                            qrInstance.makeCode(vCard); 
                             
                             const qrCanvas = qrFactory.querySelector('canvas');
                             
-                            const finalImageData = createFinalImage(qrCanvas, originalName);
+                            // ---- ¡CAMBIO CLAVE v19: Solución al "Racing Bug"! ----
+                            // Se crea el canvas final y se extraen los datos INMEDIATAMENTE
+                            
+                            const qrSize = 180;
+                            const textHeight = 30;
+                            const finalCanvas = document.createElement('canvas'); // Crear un *nuevo* canvas
+                            finalCanvas.width = qrSize;
+                            finalCanvas.height = qrSize + textHeight;
+                            const ctx = finalCanvas.getContext('2d');
+                            
+                            ctx.fillStyle = 'white';
+                            ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+                            ctx.drawImage(qrCanvas, 0, 0); // Copiar el QR *ahora*
+                            
+                            ctx.fillStyle = 'black';
+                            ctx.font = '16px Arial';
+                            ctx.textAlign = 'center';
+                            ctx.fillText(originalName, qrSize / 2, qrSize + 20); // Añadir nombre
+
+                            // Obtener los datos del *nuevo* canvas
+                            const finalImageData = finalCanvas.toDataURL('image/png').split(',')[1];
+                            // ----------------------------------------------------
                             
                             // Guardar datos para ZIP
                             const filename = (originalName || originalEmail || originalPhone).replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png'; 
@@ -351,7 +349,6 @@
 
                             qrCount++;
                         } catch (e) {
-                            // Esto solo debería pasar si la vCard es VÁLIDA pero falla (ej. overflow)
                             qrErrors++;
                             console.error(`¡Error procesando fila (Nombre: ${originalName})!`, e.message, "Datos:", row);
                         }
@@ -360,7 +357,6 @@
                     complete: () => {
                         console.log(`Parseo en memoria completado. ${qrCount} QRs generados, ${qrErrors} filas saltadas/fallidas.`);
                         
-                        // Limpiar el generador oculto
                         qrInstance.clear();
                         
                         if (qrCount > 0) {
@@ -404,7 +400,6 @@
                     return;
                 }
 
-                // Filtrar los datos en memoria
                 const results = searchableData.filter(item => 
                     item.name.toLowerCase().includes(query) ||
                     item.email.toLowerCase().includes(query) ||
@@ -427,7 +422,6 @@
                         const qrCodeEl = document.createElement('div');
                         card.appendChild(qrCodeEl);
                         
-                        // Generar el QR visible
                         new QRCode(qrCodeEl, {
                             text: item.vCard,
                             width: 180,
@@ -471,6 +465,7 @@
                 const zip = new JSZip();
                 
                 for (const qr of generatedQRs) {
+                    // Ahora 'qr.data' es la imagen final con el nombre
                     zip.file(qr.filename, qr.data, { base64: true });
                 }
 

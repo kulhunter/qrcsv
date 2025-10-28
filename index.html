@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v14 - Solución ZIP)</title>
+    <title>Generador de Contactos QR (v15 - Nombres en ZIP)</title>
     
     <script src="papaparse.min.js"></script>
     <script src="qrcode.min.js"></script>
@@ -188,7 +188,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v14 (Solución ZIP) cargado.");
+            console.log("Generador QR v15 (Nombres en ZIP) cargado.");
 
             // Referencias
             const csvFile = document.getElementById('csvFile');
@@ -200,8 +200,8 @@
             
             let qrCount = 0;
             let qrErrors = 0; 
-            let generatedQRs = []; // Guardará los datos del ZIP
-            let qrPromises = []; // Guardará las promesas de renderizado
+            let generatedQRs = []; 
+            let qrPromises = []; 
 
             // Función para "latinizar" (quitar acentos)
             function latinize(str) {
@@ -231,7 +231,7 @@
                 qrCount = 0;
                 qrErrors = 0; 
                 generatedQRs = []; 
-                qrPromises = []; // ¡Resetear promesas!
+                qrPromises = [];
                 downloadBtn.style.display = 'none';
                 searchBox.style.display = 'none';
                 searchBox.value = '';
@@ -283,34 +283,60 @@
 
                         // Generar QR
                         try {
+                            const qrSize = 180; // Tamaño del QR
+                            
                             new QRCode(qrCodeEl, {
                                 text: vCard,
-                                width: 180,
-                                height: 180,
+                                width: qrSize,
+                                height: qrSize,
                                 correctLevel: QRCode.CorrectLevel.L
                             });
                             
-                            // ---- ¡CAMBIO CLAVE v14: Promesa de ZIP! ----
-                            // Crear una promesa que se resuelve cuando el QR está listo
+                            // ---- ¡CAMBIO CLAVE v15: Promesa de ZIP con Nombre! ----
                             const qrPromise = new Promise((resolve, reject) => {
-                                // Esperar 10ms a que el canvas se dibuje
+                                // Esperar a que el canvas se dibuje
                                 setTimeout(() => { 
                                     try {
-                                        const canvas = qrCodeEl.querySelector('canvas');
-                                        if (canvas) {
-                                            const base64data = canvas.toDataURL('image/png').split(',')[1];
+                                        const qrCanvas = qrCodeEl.querySelector('canvas');
+                                        if (qrCanvas) {
+                                            
+                                            // 1. Crear un canvas final, más alto
+                                            const finalCanvas = document.createElement('canvas');
+                                            const textHeight = 30; // Espacio extra para el texto
+                                            finalCanvas.width = qrSize;
+                                            finalCanvas.height = qrSize + textHeight;
+                                            const ctx = finalCanvas.getContext('2d');
+                                            
+                                            // 2. Fondo blanco
+                                            ctx.fillStyle = 'white';
+                                            ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+                                            
+                                            // 3. Dibujar el QR original en el canvas nuevo
+                                            ctx.drawImage(qrCanvas, 0, 0);
+                                            
+                                            // 4. Configurar y dibujar el texto (usar nombre original con acentos)
+                                            ctx.fillStyle = 'black';
+                                            ctx.font = '16px Arial';
+                                            ctx.textAlign = 'center';
+                                            // Posición: X=centro, Y=en el margen inferior
+                                            ctx.fillText(originalName, qrSize / 2, qrSize + 20); 
+
+                                            // 5. Obtener datos del canvas final
+                                            const base64data = finalCanvas.toDataURL('image/png').split(',')[1];
                                             const filename = (originalName || originalEmail || originalPhone).replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png'; 
-                                            resolve({ filename: filename, data: base64data }); // Resolver con los datos
+                                            
+                                            resolve({ filename: filename, data: base64data }); 
+                                        
                                         } else {
                                             reject(new Error('Canvas no encontrado para ' + originalName));
                                         }
                                     } catch (e) {
-                                        reject(e); // Rechazar si toDataURL falla
+                                        reject(e); 
                                     }
-                                }, 10); // 10ms de seguridad
+                                }, 10);
                             });
                             
-                            qrPromises.push(qrPromise); // Añadir promesa al array
+                            qrPromises.push(qrPromise);
                             qrCount++;
                             
                         } catch (e) {
@@ -321,15 +347,13 @@
                         }
                     },
                     
-                    // ---- ¡CAMBIO CLAVE v14: 'complete' espera a las promesas! ----
+                    // 'complete' espera a las promesas
                     complete: () => {
                         console.log(`Parseo de CSV completado. ${qrCount} QRs intentados, ${qrErrors} errores.`);
                         
-                        // Esperar a que TODAS las promesas de renderizado se completen
                         Promise.all(qrPromises)
                             .then(qrDataArray => {
-                                // ¡AHORA SÍ! 'qrDataArray' tiene los datos de los 217 QRs
-                                generatedQRs = qrDataArray; // Guardar en el array global
+                                generatedQRs = qrDataArray; 
                                 
                                 console.log(`Renderizado de QRs completado. ${generatedQRs.length} QRs listos para ZIP.`);
                                 
@@ -340,7 +364,6 @@
                                     }
                                     status.innerHTML = statusMsg;
                                     
-                                    // MOSTRAR BOTONES SOLO AHORA
                                     downloadBtn.style.display = 'block'; 
                                     searchBox.style.display = 'block'; 
                                 
@@ -353,7 +376,6 @@
                                 generateBtn.disabled = false;
                             })
                             .catch(err => {
-                                // Si alguna promesa de QR falló al guardar
                                 console.error("Error al renderizar QRs para el ZIP:", err);
                                 status.innerHTML = `<p style="color: red;">Error al guardar los QRs. Revisa la consola.</p>`;
                                 generateBtn.disabled = false;
@@ -384,7 +406,6 @@
             });
 
             // ---- Evento del botón "Descargar ZIP" ----
-            // (Esta función ahora funcionará porque 'generatedQRs' estará lleno)
             downloadBtn.addEventListener('click', () => {
                 if (typeof JSZip === 'undefined') {
                     alert("Error: La librería JSZip no se cargó. Refresca la página.");

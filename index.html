@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v12 - Anti-Bug)</title>
+    <title>Generador de Contactos QR (v13 - Solución UTF-8)</title>
     
     <script src="papaparse.min.js"></script>
     <script src="qrcode.min.js"></script>
@@ -188,7 +188,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v12 (Anti-Bug) cargado.");
+            console.log("Generador QR v13 (Solución UTF-8) cargado.");
 
             // Referencias
             const csvFile = document.getElementById('csvFile');
@@ -202,6 +202,15 @@
             let qrErrors = 0; 
             let generatedQRs = []; 
 
+            // ---- ¡CAMBIO CLAVE v13: Función para "latinizar"! ----
+            function latinize(str) {
+                if (!str) return '';
+                return String(str)
+                    .normalize("NFD") // Separa acentos de letras
+                    .replace(/[\u0300-\u036f]/g, "") // Elimina los acentos
+                    .replace(/[^ \w.-@]/g, ''); // Elimina otros caracteres raros (excepto @ . -)
+            }
+            
             // ---- Evento "Generar QRs" ----
             generateBtn.addEventListener('click', () => {
                 
@@ -245,61 +254,67 @@
                         const MAX_EMAIL_LEN = 80;
                         const MAX_PHONE_LEN = 20;
 
-                        // ---- ¡CAMBIO CLAVE (v12): Conversión forzada a String! ----
-                        // Esto evita errores si el campo es 'null' o un número
-                        const name = (row['Nombre y apellido'] ? String(row['Nombre y apellido']).trim() : '').substring(0, MAX_NAME_LEN);
-                        const email = (row['Email'] ? String(row['Email']).trim() : '').substring(0, MAX_EMAIL_LEN);
-                        let phone = (row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '').substring(0, MAX_PHONE_LEN);
+                        // ---- ¡CAMBIO CLAVE v13: Usar latinize()! ----
+                        // 1. Datos originales (para mostrar y buscar)
+                        const originalName = (row['Nombre y apellido'] ? String(row['Nombre y apellido']).trim() : '').substring(0, MAX_NAME_LEN);
+                        const originalEmail = (row['Email'] ? String(row['Email']).trim() : '').substring(0, MAX_EMAIL_LEN);
+                        const originalPhone = (row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '').substring(0, MAX_PHONE_LEN);
 
-                        if (!name && !email && !phone) {
+                        if (!originalName && !originalEmail && !originalPhone) {
                             return; // Saltar fila vacía
                         }
+                        
+                        // 2. Datos "latinizados" (SOLO para el QR)
+                        const qrName = latinize(originalName);
+                        const qrEmail = latinize(originalEmail);
+                        const qrPhone = latinize(originalPhone);
+                        
+                        // --------------------------------------------------
 
-                        const vCard = createVCard(name, email, phone);
+                        const vCard = createVCard(qrName, qrEmail, qrPhone); // Usar datos limpios
                         const card = document.createElement('div');
                         card.className = 'qr-card';
                         
-                        // Guardar todos los datos en un atributo para que el buscador funcione
-                        card.setAttribute('data-search-text', `${name} | ${email} | ${phone}`);
+                        // Guardar datos originales para que el buscador funcione
+                        card.setAttribute('data-search-text', `${originalName} | ${originalEmail} | ${originalPhone}`);
 
                         const title = document.createElement('p');
                         
-                        // Mostrar solo el nombre (o email/tel si no hay nombre)
-                        title.textContent = name || email || phone;
+                        // Mostrar el nombre original (con acentos)
+                        title.textContent = originalName || originalEmail || originalPhone;
                         
                         card.appendChild(title);
                         const qrCodeEl = document.createElement('div');
                         card.appendChild(qrCodeEl);
                         qrContainer.appendChild(card);
 
-                        // Generar QR (con try/catch individual)
+                        // Generar QR
                         try {
                             new QRCode(qrCodeEl, {
                                 text: vCard,
                                 width: 180,
                                 height: 180,
-                                correctLevel: QRCode.CorrectLevel.L // Nivel 'Bajo' para más datos
+                                correctLevel: QRCode.CorrectLevel.L
                             });
                             
-                            // Guardar para ZIP (solo si tuvo éxito)
+                            // Guardar para ZIP
                             setTimeout(() => {
                                 const canvas = qrCodeEl.querySelector('canvas');
                                 if (canvas) {
                                     const base64data = canvas.toDataURL('image/png').split(',')[1];
-                                    const filename = (name || email || phone).replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png'; 
+                                    // Usar nombre original para el archivo
+                                    const filename = (originalName || originalEmail || originalPhone).replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png'; 
                                     generatedQRs.push({ filename: filename, data: base64data });
                                 }
                             }, 1);
                             
-                            qrCount++; // Contar solo los exitosos
+                            qrCount++;
                             
                         } catch (e) {
-                            // Si falla, NO detiene el script
                             qrErrors++;
-                            console.error(`¡Error procesando fila (Nombre: ${name})!`, e.message, "Datos:", row);
+                            console.error(`¡Error procesando fila (Nombre: ${originalName})!`, e.message, "Datos:", row);
                             
-                            // Mostrar error en la tarjeta específica
-                            title.innerHTML = `<span style="color: red; font-weight: bold;">ERROR</span><br>${name}`;
+                            title.innerHTML = `<span style="color: red; font-weight: bold;">ERROR</span><br>${originalName}`;
                             qrCodeEl.innerHTML = `<p style="font-size: 0.8rem; color: red; word-wrap: break-word;">Datos muy largos para QR.</p>`;
                         }
                     },

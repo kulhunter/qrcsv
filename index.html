@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v17 - Escalable 1000+)</title>
+    <title>Generador de Contactos QR (v18 - Anti-Crash)</title>
     
     <script src="papaparse.min.js"></script>
     <script src="qrcode.min.js"></script>
@@ -123,11 +123,9 @@
         }
         
         #qr-container {
-            /* CAMBIO v17: No es un grid por defecto, solo un contenedor */
             margin-top: 20px;
         }
         
-        /* CAMBIO v17: El grid se aplica al 'div' de resultados */
         .qr-results-grid {
              display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -141,7 +139,7 @@
             padding: 20px;
             border: 2px dashed #eee;
             border-radius: 8px;
-            display: none; /* Oculto hasta que se generen los QRs */
+            display: none; 
         }
 
         .qr-card {
@@ -151,7 +149,6 @@
             padding: 15px;
             text-align: center;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-            /* CAMBIO v17: No más transiciones para rendimiento */
             display: block; 
         }
         .qr-card p {
@@ -205,7 +202,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v17 (Escalable 1000+) cargado.");
+            console.log("Generador QR v18 (Anti-Crash) cargado.");
 
             // Referencias
             const csvFile = document.getElementById('csvFile');
@@ -215,24 +212,21 @@
             const status = document.getElementById('status');
             const qrContainer = document.getElementById('qr-container');
             const qrContainerMessage = document.getElementById('qr-container-message');
-            
-            // CAMBIO v17: Div oculto para generar QRs
             const qrFactory = document.getElementById('qr-factory');
             
             let qrCount = 0;
             let qrErrors = 0; 
-            let generatedQRs = []; // Guardará los datos del ZIP
-            let searchableData = []; // Guardará los datos para el buscador
+            let generatedQRs = []; 
+            let searchableData = []; 
 
-            // ---- ¡CAMBIO CLAVE v17: Generador de QR en memoria! ----
-            // 1. Crear UNA instancia de QRCode oculta
+            // Crear UNA instancia de QRCode oculta
             const qrInstance = new QRCode(qrFactory, {
                 width: 180,
                 height: 180,
                 correctLevel: QRCode.CorrectLevel.L
             });
             
-            // 2. Función para crear la imagen final (QR + Nombre)
+            // Función para crear la imagen final (QR + Nombre)
             function createFinalImage(qrCanvas, name) {
                 const qrSize = 180;
                 const textHeight = 30;
@@ -277,13 +271,13 @@
 
                 // Resetear UI
                 const file = csvFile.files[0];
-                qrContainer.innerHTML = ''; // Limpiar QRs anteriores
-                qrContainer.appendChild(qrContainerMessage); // Poner el mensaje de vuelta
+                qrContainer.innerHTML = ''; 
+                qrContainer.appendChild(qrContainerMessage); 
                 qrContainerMessage.style.display = 'none';
                 qrCount = 0;
                 qrErrors = 0; 
                 generatedQRs = [];
-                searchableData = []; // Limpiar datos de búsqueda
+                searchableData = []; 
                 downloadBtn.style.display = 'none';
                 searchBox.style.display = 'none';
                 searchBox.value = '';
@@ -298,7 +292,6 @@
                     skipEmptyLines: true,
                     bom: true, 
                     
-                    // ---- ¡CAMBIO CLAVE v17: 'step' solo procesa, NO dibuja! ----
                     step: (results, parser) => {
                         const row = results.data;
                         if (qrCount === 0 && qrErrors === 0) {
@@ -309,35 +302,40 @@
                         const MAX_EMAIL_LEN = 80;
                         const MAX_PHONE_LEN = 20;
 
-                        // 1. Datos originales (para mostrar y buscar)
+                        // 1. Datos originales
                         const originalName = (row['Nombre y apellido'] ? String(row['Nombre y apellido']).trim() : '').substring(0, MAX_NAME_LEN);
                         const originalEmail = (row['Email'] ? String(row['Email']).trim() : '').substring(0, MAX_EMAIL_LEN);
                         const originalPhone = (row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '').substring(0, MAX_PHONE_LEN);
 
+                        // Filtro 1: Saltar si la fila original está vacía
                         if (!originalName && !originalEmail && !originalPhone) {
-                            return; // Saltar fila vacía
+                            return; 
                         }
                         
-                        // 2. Datos "latinizados" (SOLO para el QR)
+                        // 2. Datos "latinizados"
                         const qrName = latinize(originalName);
                         const qrEmail = latinize(originalEmail);
                         const qrPhone = latinize(originalPhone);
                         
+                        // ---- ¡CAMBIO CLAVE v18: Segundo Filtro! ----
+                        // Si después de latinizar no queda NADA, la vCard estaría vacía y rompería el generador.
+                        if (!qrName && !qrEmail && !qrPhone) {
+                            console.warn("Fila saltada (datos vacíos después de latinizar):", row);
+                            qrErrors++; // Contar como fila fallida/saltada
+                            return; // Saltar esta fila para no romper el 'qrInstance'
+                        }
+                        // ---------------------------------------------
+
                         const vCard = createVCard(qrName, qrEmail, qrPhone); 
                         
-                        // 3. Generar QR en memoria usando la instancia oculta
+                        // 3. Generar QR en memoria
                         try {
-                            // Generar el QR
-                            qrInstance.makeCode(vCard); 
+                            qrInstance.clear(); // Limpiar la instancia
+                            qrInstance.makeCode(vCard); // Generar el nuevo QR
                             
-                            // Obtener el canvas (¡es síncrono!)
                             const qrCanvas = qrFactory.querySelector('canvas');
                             
-                            // Crear la imagen final (QR + Nombre)
                             const finalImageData = createFinalImage(qrCanvas, originalName);
-                            
-                            // Limpiar el canvas de fábrica
-                            qrFactory.innerHTML = ''; 
                             
                             // Guardar datos para ZIP
                             const filename = (originalName || originalEmail || originalPhone).replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png'; 
@@ -353,26 +351,25 @@
 
                             qrCount++;
                         } catch (e) {
+                            // Esto solo debería pasar si la vCard es VÁLIDA pero falla (ej. overflow)
                             qrErrors++;
                             console.error(`¡Error procesando fila (Nombre: ${originalName})!`, e.message, "Datos:", row);
                         }
                     },
                     
-                    // ---- ¡CAMBIO CLAVE v17: 'complete' es inmediato! ----
                     complete: () => {
-                        console.log(`Parseo en memoria completado. ${qrCount} QRs generados, ${qrErrors} errores.`);
+                        console.log(`Parseo en memoria completado. ${qrCount} QRs generados, ${qrErrors} filas saltadas/fallidas.`);
                         
-                        // Limpiar el generador oculto por si acaso
-                        qrFactory.innerHTML = '';
+                        // Limpiar el generador oculto
+                        qrInstance.clear();
                         
                         if (qrCount > 0) {
                             let statusMsg = `<p style="color: green;">¡Se generaron ${qrCount} códigos QR!</p>`;
                             if (qrErrors > 0) {
-                                statusMsg += ` <p style="color: red;">(${qrErrors} fila${qrErrors > 1 ? 's' : ''} fallaron).</p>`;
+                                statusMsg += ` <p style="color: red;">(${qrErrors} fila${qrErrors > 1 ? 's' : ''} saltadas/fallidas).</p>`;
                             }
                             status.innerHTML = statusMsg;
                             
-                            // Mostrar botones y mensaje de búsqueda
                             downloadBtn.style.display = 'block'; 
                             searchBox.style.display = 'block'; 
                             qrContainerMessage.style.display = 'block';
@@ -394,17 +391,16 @@
                 });
             });
 
-            // ---- ¡CAMBIO CLAVE v17: Evento del Buscador (Dibuja al buscar)! ----
+            // ---- Evento del Buscador (Dibuja al buscar) ----
             searchBox.addEventListener('input', () => {
                 const query = searchBox.value.toLowerCase().trim();
                 
-                // Limpiar resultados anteriores
                 qrContainer.innerHTML = ''; 
                 
                 if (query.length < 2) { 
-                    // Si la búsqueda es muy corta, mostrar el mensaje
                     qrContainer.appendChild(qrContainerMessage);
                     qrContainerMessage.style.display = 'block';
+                    qrContainerMessage.querySelector('p').textContent = 'Escribe al menos 2 letras para buscar...';
                     return;
                 }
 
@@ -412,10 +408,10 @@
                 const results = searchableData.filter(item => 
                     item.name.toLowerCase().includes(query) ||
                     item.email.toLowerCase().includes(query) ||
-                    item.phone.includes(query) // Teléfono no necesita toLowerCase
+                    item.phone.includes(query)
                 );
                 
-                const maxResults = 50; // Límite de QRs a mostrar
+                const maxResults = 50; 
                 const limitedResults = results.slice(0, maxResults);
                 
                 if (limitedResults.length > 0) {
@@ -423,14 +419,11 @@
                     grid.className = 'qr-results-grid';
                     
                     limitedResults.forEach(item => {
-                        // Dibujar la tarjeta y el QR SÓLO AHORA
                         const card = document.createElement('div');
                         card.className = 'qr-card';
-                        
                         const title = document.createElement('p');
                         title.textContent = item.name || item.email || item.phone;
                         card.appendChild(title);
-                        
                         const qrCodeEl = document.createElement('div');
                         card.appendChild(qrCodeEl);
                         
@@ -441,13 +434,11 @@
                             height: 180,
                             correctLevel: QRCode.CorrectLevel.L
                         });
-                        
                         grid.appendChild(card);
                     });
                     
                     qrContainer.appendChild(grid);
                     
-                    // Si hay más resultados de los mostrados
                     if (results.length > maxResults) {
                         const infoMsg = document.createElement('p');
                         infoMsg.textContent = `Mostrando ${maxResults} de ${results.length} resultados. Afina tu búsqueda.`;
@@ -456,7 +447,6 @@
                         qrContainer.appendChild(infoMsg);
                     }
                 } else {
-                    // Si no hay resultados
                     qrContainer.appendChild(qrContainerMessage);
                     qrContainerMessage.style.display = 'block';
                     qrContainerMessage.querySelector('p').textContent = 'No se encontraron resultados.';
@@ -464,7 +454,6 @@
             });
 
             // ---- Evento del botón "Descargar ZIP" ----
-            // (Funciona igual, pero ahora 'generatedQRs' está listo al instante)
             downloadBtn.addEventListener('click', () => {
                 if (typeof JSZip === 'undefined') {
                     alert("Error: La librería JSZip no se cargó. Refresca la página.");

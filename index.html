@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v15 - Nombres en ZIP)</title>
+    <title>Generador de Contactos QR (v17 - Escalable 1000+)</title>
     
     <script src="papaparse.min.js"></script>
     <script src="qrcode.min.js"></script>
@@ -123,11 +123,27 @@
         }
         
         #qr-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 20px;
+            /* CAMBIO v17: No es un grid por defecto, solo un contenedor */
             margin-top: 20px;
         }
+        
+        /* CAMBIO v17: El grid se aplica al 'div' de resultados */
+        .qr-results-grid {
+             display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        #qr-container-message {
+            text-align: center;
+            color: #777;
+            font-size: 1.1rem;
+            padding: 20px;
+            border: 2px dashed #eee;
+            border-radius: 8px;
+            display: none; /* Oculto hasta que se generen los QRs */
+        }
+
         .qr-card {
             background-color: #fdfdfd;
             border: 1px solid #eee;
@@ -135,12 +151,8 @@
             padding: 15px;
             text-align: center;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-            transition: transform 0.2s, box-shadow 0.2s;
+            /* CAMBIO v17: No más transiciones para rendimiento */
             display: block; 
-        }
-        .qr-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
         }
         .qr-card p {
             font-weight: 600;
@@ -157,6 +169,8 @@
     </style>
 </head>
 <body>
+
+    <div id="qr-factory" style="display: none;"></div>
 
     <div class="app-container">
         <header>
@@ -182,13 +196,16 @@
             </div>
 
             <div id="qr-container">
+                <div id="qr-container-message">
+                    <p>Escribe en el buscador para visualizar QRs.</p>
                 </div>
+            </div>
         </main>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v15 (Nombres en ZIP) cargado.");
+            console.log("Generador QR v17 (Escalable 1000+) cargado.");
 
             // Referencias
             const csvFile = document.getElementById('csvFile');
@@ -197,11 +214,44 @@
             const searchBox = document.getElementById('searchBox');
             const status = document.getElementById('status');
             const qrContainer = document.getElementById('qr-container');
+            const qrContainerMessage = document.getElementById('qr-container-message');
+            
+            // CAMBIO v17: Div oculto para generar QRs
+            const qrFactory = document.getElementById('qr-factory');
             
             let qrCount = 0;
             let qrErrors = 0; 
-            let generatedQRs = []; 
-            let qrPromises = []; 
+            let generatedQRs = []; // Guardará los datos del ZIP
+            let searchableData = []; // Guardará los datos para el buscador
+
+            // ---- ¡CAMBIO CLAVE v17: Generador de QR en memoria! ----
+            // 1. Crear UNA instancia de QRCode oculta
+            const qrInstance = new QRCode(qrFactory, {
+                width: 180,
+                height: 180,
+                correctLevel: QRCode.CorrectLevel.L
+            });
+            
+            // 2. Función para crear la imagen final (QR + Nombre)
+            function createFinalImage(qrCanvas, name) {
+                const qrSize = 180;
+                const textHeight = 30;
+                const finalCanvas = document.createElement('canvas');
+                finalCanvas.width = qrSize;
+                finalCanvas.height = qrSize + textHeight;
+                const ctx = finalCanvas.getContext('2d');
+                
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+                ctx.drawImage(qrCanvas, 0, 0);
+                
+                ctx.fillStyle = 'black';
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(name, qrSize / 2, qrSize + 20); 
+
+                return finalCanvas.toDataURL('image/png').split(',')[1];
+            }
 
             // Función para "latinizar" (quitar acentos)
             function latinize(str) {
@@ -227,18 +277,20 @@
 
                 // Resetear UI
                 const file = csvFile.files[0];
-                qrContainer.innerHTML = '';
+                qrContainer.innerHTML = ''; // Limpiar QRs anteriores
+                qrContainer.appendChild(qrContainerMessage); // Poner el mensaje de vuelta
+                qrContainerMessage.style.display = 'none';
                 qrCount = 0;
                 qrErrors = 0; 
-                generatedQRs = []; 
-                qrPromises = [];
+                generatedQRs = [];
+                searchableData = []; // Limpiar datos de búsqueda
                 downloadBtn.style.display = 'none';
                 searchBox.style.display = 'none';
                 searchBox.value = '';
                 status.innerHTML = '<div class="loader"></div> <p>Procesando archivo...</p>';
                 generateBtn.disabled = true;
 
-                console.log("Iniciando parseo de PapaParse (local)...");
+                console.log("Iniciando parseo en memoria...");
 
                 // Parsear CSV
                 Papa.parse(file, {
@@ -246,6 +298,7 @@
                     skipEmptyLines: true,
                     bom: true, 
                     
+                    // ---- ¡CAMBIO CLAVE v17: 'step' solo procesa, NO dibuja! ----
                     step: (results, parser) => {
                         const row = results.data;
                         if (qrCount === 0 && qrErrors === 0) {
@@ -271,115 +324,66 @@
                         const qrPhone = latinize(originalPhone);
                         
                         const vCard = createVCard(qrName, qrEmail, qrPhone); 
-                        const card = document.createElement('div');
-                        card.className = 'qr-card';
-                        card.setAttribute('data-search-text', `${originalName} | ${originalEmail} | ${originalPhone}`);
-                        const title = document.createElement('p');
-                        title.textContent = originalName || originalEmail || originalPhone;
-                        card.appendChild(title);
-                        const qrCodeEl = document.createElement('div');
-                        card.appendChild(qrCodeEl);
-                        qrContainer.appendChild(card);
-
-                        // Generar QR
+                        
+                        // 3. Generar QR en memoria usando la instancia oculta
                         try {
-                            const qrSize = 180; // Tamaño del QR
+                            // Generar el QR
+                            qrInstance.makeCode(vCard); 
                             
-                            new QRCode(qrCodeEl, {
-                                text: vCard,
-                                width: qrSize,
-                                height: qrSize,
-                                correctLevel: QRCode.CorrectLevel.L
+                            // Obtener el canvas (¡es síncrono!)
+                            const qrCanvas = qrFactory.querySelector('canvas');
+                            
+                            // Crear la imagen final (QR + Nombre)
+                            const finalImageData = createFinalImage(qrCanvas, originalName);
+                            
+                            // Limpiar el canvas de fábrica
+                            qrFactory.innerHTML = ''; 
+                            
+                            // Guardar datos para ZIP
+                            const filename = (originalName || originalEmail || originalPhone).replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png'; 
+                            generatedQRs.push({ filename: filename, data: finalImageData });
+                            
+                            // Guardar datos para Búsqueda
+                            searchableData.push({
+                                name: originalName,
+                                email: originalEmail,
+                                phone: originalPhone,
+                                vCard: vCard
                             });
-                            
-                            // ---- ¡CAMBIO CLAVE v15: Promesa de ZIP con Nombre! ----
-                            const qrPromise = new Promise((resolve, reject) => {
-                                // Esperar a que el canvas se dibuje
-                                setTimeout(() => { 
-                                    try {
-                                        const qrCanvas = qrCodeEl.querySelector('canvas');
-                                        if (qrCanvas) {
-                                            
-                                            // 1. Crear un canvas final, más alto
-                                            const finalCanvas = document.createElement('canvas');
-                                            const textHeight = 30; // Espacio extra para el texto
-                                            finalCanvas.width = qrSize;
-                                            finalCanvas.height = qrSize + textHeight;
-                                            const ctx = finalCanvas.getContext('2d');
-                                            
-                                            // 2. Fondo blanco
-                                            ctx.fillStyle = 'white';
-                                            ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-                                            
-                                            // 3. Dibujar el QR original en el canvas nuevo
-                                            ctx.drawImage(qrCanvas, 0, 0);
-                                            
-                                            // 4. Configurar y dibujar el texto (usar nombre original con acentos)
-                                            ctx.fillStyle = 'black';
-                                            ctx.font = '16px Arial';
-                                            ctx.textAlign = 'center';
-                                            // Posición: X=centro, Y=en el margen inferior
-                                            ctx.fillText(originalName, qrSize / 2, qrSize + 20); 
 
-                                            // 5. Obtener datos del canvas final
-                                            const base64data = finalCanvas.toDataURL('image/png').split(',')[1];
-                                            const filename = (originalName || originalEmail || originalPhone).replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png'; 
-                                            
-                                            resolve({ filename: filename, data: base64data }); 
-                                        
-                                        } else {
-                                            reject(new Error('Canvas no encontrado para ' + originalName));
-                                        }
-                                    } catch (e) {
-                                        reject(e); 
-                                    }
-                                }, 10);
-                            });
-                            
-                            qrPromises.push(qrPromise);
                             qrCount++;
-                            
                         } catch (e) {
                             qrErrors++;
                             console.error(`¡Error procesando fila (Nombre: ${originalName})!`, e.message, "Datos:", row);
-                            title.innerHTML = `<span style="color: red; font-weight: bold;">ERROR</span><br>${originalName}`;
-                            qrCodeEl.innerHTML = `<p style="font-size: 0.8rem; color: red; word-wrap: break-word;">Datos muy largos para QR.</p>`;
                         }
                     },
                     
-                    // 'complete' espera a las promesas
+                    // ---- ¡CAMBIO CLAVE v17: 'complete' es inmediato! ----
                     complete: () => {
-                        console.log(`Parseo de CSV completado. ${qrCount} QRs intentados, ${qrErrors} errores.`);
+                        console.log(`Parseo en memoria completado. ${qrCount} QRs generados, ${qrErrors} errores.`);
                         
-                        Promise.all(qrPromises)
-                            .then(qrDataArray => {
-                                generatedQRs = qrDataArray; 
-                                
-                                console.log(`Renderizado de QRs completado. ${generatedQRs.length} QRs listos para ZIP.`);
-                                
-                                if (generatedQRs.length > 0) {
-                                    let statusMsg = `<p style="color: green;">¡Se generaron ${generatedQRs.length} códigos QR!</p>`;
-                                    if (qrErrors > 0) {
-                                        statusMsg += ` <p style="color: red;">(${qrErrors} fila${qrErrors > 1 ? 's' : ''} fallaron).</p>`;
-                                    }
-                                    status.innerHTML = statusMsg;
-                                    
-                                    downloadBtn.style.display = 'block'; 
-                                    searchBox.style.display = 'block'; 
-                                
-                                } else if (qrErrors > 0) {
-                                    status.innerHTML = `<p style="color: red;">No se pudo generar ningún QR. ${qrErrors} filas fallaron.</p>`;
-                                } else {
-                                    status.innerHTML = `<p style="color: red;">No se encontraron datos válidos para generar QRs.</p>`;
-                                }
-                                
-                                generateBtn.disabled = false;
-                            })
-                            .catch(err => {
-                                console.error("Error al renderizar QRs para el ZIP:", err);
-                                status.innerHTML = `<p style="color: red;">Error al guardar los QRs. Revisa la consola.</p>`;
-                                generateBtn.disabled = false;
-                            });
+                        // Limpiar el generador oculto por si acaso
+                        qrFactory.innerHTML = '';
+                        
+                        if (qrCount > 0) {
+                            let statusMsg = `<p style="color: green;">¡Se generaron ${qrCount} códigos QR!</p>`;
+                            if (qrErrors > 0) {
+                                statusMsg += ` <p style="color: red;">(${qrErrors} fila${qrErrors > 1 ? 's' : ''} fallaron).</p>`;
+                            }
+                            status.innerHTML = statusMsg;
+                            
+                            // Mostrar botones y mensaje de búsqueda
+                            downloadBtn.style.display = 'block'; 
+                            searchBox.style.display = 'block'; 
+                            qrContainerMessage.style.display = 'block';
+                        
+                        } else if (qrErrors > 0) {
+                            status.innerHTML = `<p style="color: red;">No se pudo generar ningún QR. ${qrErrors} filas fallaron.</p>`;
+                        } else {
+                            status.innerHTML = `<p style="color: red;">No se encontraron datos válidos para generar QRs.</p>`;
+                        }
+                        
+                        generateBtn.disabled = false;
                     },
                     
                     error: (err, file) => {
@@ -390,22 +394,77 @@
                 });
             });
 
-            // ---- Evento del Buscador ----
+            // ---- ¡CAMBIO CLAVE v17: Evento del Buscador (Dibuja al buscar)! ----
             searchBox.addEventListener('input', () => {
                 const query = searchBox.value.toLowerCase().trim();
-                const allCards = document.querySelectorAll('.qr-card');
                 
-                allCards.forEach(card => {
-                    const searchableText = card.getAttribute('data-search-text').toLowerCase();
-                    if (searchableText.includes(query)) {
-                        card.style.display = 'block';
-                    } else {
-                        card.style.display = 'none';
+                // Limpiar resultados anteriores
+                qrContainer.innerHTML = ''; 
+                
+                if (query.length < 2) { 
+                    // Si la búsqueda es muy corta, mostrar el mensaje
+                    qrContainer.appendChild(qrContainerMessage);
+                    qrContainerMessage.style.display = 'block';
+                    return;
+                }
+
+                // Filtrar los datos en memoria
+                const results = searchableData.filter(item => 
+                    item.name.toLowerCase().includes(query) ||
+                    item.email.toLowerCase().includes(query) ||
+                    item.phone.includes(query) // Teléfono no necesita toLowerCase
+                );
+                
+                const maxResults = 50; // Límite de QRs a mostrar
+                const limitedResults = results.slice(0, maxResults);
+                
+                if (limitedResults.length > 0) {
+                    const grid = document.createElement('div');
+                    grid.className = 'qr-results-grid';
+                    
+                    limitedResults.forEach(item => {
+                        // Dibujar la tarjeta y el QR SÓLO AHORA
+                        const card = document.createElement('div');
+                        card.className = 'qr-card';
+                        
+                        const title = document.createElement('p');
+                        title.textContent = item.name || item.email || item.phone;
+                        card.appendChild(title);
+                        
+                        const qrCodeEl = document.createElement('div');
+                        card.appendChild(qrCodeEl);
+                        
+                        // Generar el QR visible
+                        new QRCode(qrCodeEl, {
+                            text: item.vCard,
+                            width: 180,
+                            height: 180,
+                            correctLevel: QRCode.CorrectLevel.L
+                        });
+                        
+                        grid.appendChild(card);
+                    });
+                    
+                    qrContainer.appendChild(grid);
+                    
+                    // Si hay más resultados de los mostrados
+                    if (results.length > maxResults) {
+                        const infoMsg = document.createElement('p');
+                        infoMsg.textContent = `Mostrando ${maxResults} de ${results.length} resultados. Afina tu búsqueda.`;
+                        infoMsg.style.textAlign = 'center';
+                        infoMsg.style.marginTop = '20px';
+                        qrContainer.appendChild(infoMsg);
                     }
-                });
+                } else {
+                    // Si no hay resultados
+                    qrContainer.appendChild(qrContainerMessage);
+                    qrContainerMessage.style.display = 'block';
+                    qrContainerMessage.querySelector('p').textContent = 'No se encontraron resultados.';
+                }
             });
 
             // ---- Evento del botón "Descargar ZIP" ----
+            // (Funciona igual, pero ahora 'generatedQRs' está listo al instante)
             downloadBtn.addEventListener('click', () => {
                 if (typeof JSZip === 'undefined') {
                     alert("Error: La librería JSZip no se cargó. Refresca la página.");

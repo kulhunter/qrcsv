@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v20 - ZIP Definitivo)</title>
+    <title>Generador de Contactos QR (v21 - miau)</title>
     
     <script src="papaparse.min.js"></script>
     <script src="qrcode.min.js"></script>
@@ -123,25 +123,13 @@
         }
         
         #qr-container {
+            /* CAMBIO v21: Volvemos al grid */
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
             margin-top: 20px;
         }
         
-        .qr-results-grid {
-             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 20px;
-        }
-        
-        #qr-container-message {
-            text-align: center;
-            color: #777;
-            font-size: 1.1rem;
-            padding: 20px;
-            border: 2px dashed #eee;
-            border-radius: 8px;
-            display: none; 
-        }
-
         .qr-card {
             background-color: #fdfdfd;
             border: 1px solid #eee;
@@ -191,16 +179,13 @@
             </div>
 
             <div id="qr-container">
-                <div id="qr-container-message">
-                    <p>Escribe en el buscador para visualizar QRs.</p>
-                </div>
             </div>
         </main>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v20 (ZIP Definitivo) cargado.");
+            console.log("Generador QR v21 (ZIP Arreglado) cargado.");
 
             // Referencias
             const csvFile = document.getElementById('csvFile');
@@ -209,12 +194,10 @@
             const searchBox = document.getElementById('searchBox');
             const status = document.getElementById('status');
             const qrContainer = document.getElementById('qr-container');
-            const qrContainerMessage = document.getElementById('qr-container-message');
             
             let qrCount = 0;
             let qrErrors = 0; 
             let generatedQRs = []; 
-            let searchableData = []; 
 
             // Función para "latinizar" (quitar acentos)
             function latinize(str) {
@@ -223,54 +206,6 @@
                     .normalize("NFD") 
                     .replace(/[\u0300-\u036f]/g, "") 
                     .replace(/[^ \w.-@]/g, ''); 
-            }
-            
-            // ---- ¡CAMBIO CLAVE v20: Generador de ZIP en memoria! ----
-            // Esta función crea un QR en un canvas temporal y devuelve los datos
-            function generateQrForZip(vCard, name) {
-                try {
-                    // 1. Crear un div temporal (fuera del DOM)
-                    const tempDiv = document.createElement('div');
-                    
-                    // 2. Crear una NUEVA instancia de QRCode
-                    new QRCode(tempDiv, {
-                        text: vCard,
-                        width: 180,
-                        height: 180,
-                        correctLevel: QRCode.CorrectLevel.L
-                    });
-                    
-                    // 3. Obtener el canvas que acaba de crear
-                    const qrCanvas = tempDiv.querySelector('canvas');
-                    if (!qrCanvas) {
-                        throw new Error("No se pudo crear el canvas del QR");
-                    }
-                    
-                    // 4. Crear el canvas final con el nombre
-                    const qrSize = 180;
-                    const textHeight = 30;
-                    const finalCanvas = document.createElement('canvas');
-                    finalCanvas.width = qrSize;
-                    finalCanvas.height = qrSize + textHeight;
-                    const ctx = finalCanvas.getContext('2d');
-                    
-                    ctx.fillStyle = 'white';
-                    ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-                    ctx.drawImage(qrCanvas, 0, 0); // Copiar el QR
-                    
-                    ctx.fillStyle = 'black';
-                    ctx.font = '16px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(name, qrSize / 2, qrSize + 20); // Añadir nombre
-
-                    // 5. Devolver los datos de la imagen final
-                    return finalCanvas.toDataURL('image/png').split(',')[1];
-                    
-                } catch (e) {
-                    // Si falla esta instancia, devuelve null
-                    console.error("Fallo al generar un QR para el ZIP:", name, e.message);
-                    return null;
-                }
             }
             
             // ---- Evento "Generar QRs" ----
@@ -289,19 +224,16 @@
                 // Resetear UI
                 const file = csvFile.files[0];
                 qrContainer.innerHTML = ''; 
-                qrContainer.appendChild(qrContainerMessage); 
-                qrContainerMessage.style.display = 'none';
                 qrCount = 0;
                 qrErrors = 0; 
                 generatedQRs = [];
-                searchableData = []; 
                 downloadBtn.style.display = 'none';
                 searchBox.style.display = 'none';
                 searchBox.value = '';
                 status.innerHTML = '<div class="loader"></div> <p>Procesando archivo...</p>';
                 generateBtn.disabled = true;
 
-                console.log("Iniciando parseo en memoria...");
+                console.log("Iniciando parseo y dibujado...");
 
                 // Parsear CSV
                 Papa.parse(file, {
@@ -309,6 +241,7 @@
                     skipEmptyLines: true,
                     bom: true, 
                     
+                    // CAMBIO v21: 'step' vuelve a dibujar en la pantalla
                     step: (results, parser) => {
                         const row = results.data;
                         if (qrCount === 0 && qrErrors === 0) {
@@ -324,7 +257,7 @@
                         const originalEmail = (row['Email'] ? String(row['Email']).trim() : '').substring(0, MAX_EMAIL_LEN);
                         const originalPhone = (row['WhatsApp'] ? String(row['WhatsApp']).replace(/\D/g, '') : '').substring(0, MAX_PHONE_LEN);
 
-                        // Filtro 1: Saltar si la fila original está vacía
+                        // Filtro 1
                         if (!originalName && !originalEmail && !originalPhone) {
                             return; 
                         }
@@ -334,7 +267,7 @@
                         const qrEmail = latinize(originalEmail);
                         const qrPhone = latinize(originalPhone);
                         
-                        // Filtro 2: Saltar si la fila "limpia" está vacía
+                        // Filtro 2
                         if (!qrName && !qrEmail && !qrPhone) {
                             console.warn("Fila saltada (datos vacíos después de latinizar):", row);
                             qrErrors++;
@@ -343,31 +276,41 @@
 
                         const vCard = createVCard(qrName, qrEmail, qrPhone); 
                         
-                        // ---- ¡CAMBIO CLAVE v20: Generar ZIP aquí! ----
-                        const finalImageData = generateQrForZip(vCard, originalName);
+                        // 3. Crear Tarjeta HTML
+                        const card = document.createElement('div');
+                        card.className = 'qr-card';
+                        // Guardar datos para el buscador
+                        card.setAttribute('data-search-text', `${originalName} | ${originalEmail} | ${originalPhone}`);
                         
-                        if (finalImageData) {
-                            // Guardar datos para ZIP
-                            const filename = (originalName || originalEmail || originalPhone).replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png'; 
-                            generatedQRs.push({ filename: filename, data: finalImageData });
-                            
-                            // Guardar datos para Búsqueda
-                            searchableData.push({
-                                name: originalName,
-                                email: originalEmail,
-                                phone: originalPhone,
-                                vCard: vCard // Guardar la vCard para el buscador
+                        const title = document.createElement('p');
+                        title.textContent = originalName || originalEmail || originalPhone;
+                        card.appendChild(title);
+                        
+                        const qrCodeEl = document.createElement('div');
+                        card.appendChild(qrCodeEl);
+                        qrContainer.appendChild(card); // Añadir a la pantalla
+
+                        // 4. Generar QR
+                        try {
+                            // qrcode.js es SÍNCRONO. Dibuja el canvas de inmediato.
+                            new QRCode(qrCodeEl, {
+                                text: vCard,
+                                width: 180,
+                                height: 180,
+                                correctLevel: QRCode.CorrectLevel.L
                             });
                             qrCount++;
-                        } else {
-                            // El QR falló al generarse (ej. overflow)
+                        } catch (e) {
                             qrErrors++;
-                            console.error(`¡Error procesando fila (Nombre: ${originalName})!`, "Datos:", row);
+                            console.error(`¡Error procesando fila (Nombre: ${originalName})!`, e.message, "Datos:", row);
+                            title.innerHTML = `<span style="color: red; font-weight: bold;">ERROR</span><br>${originalName}`;
+                            qrCodeEl.innerHTML = `<p style="font-size: 0.8rem; color: red; word-wrap: break-word;">Datos muy largos para QR.</p>`;
                         }
                     },
                     
+                    // CAMBIO v21: 'complete' prepara el ZIP
                     complete: () => {
-                        console.log(`Parseo en memoria completado. ${qrCount} QRs generados, ${qrErrors} filas saltadas/fallidas.`);
+                        console.log(`Parseo completado. ${qrCount} QRs generados, ${qrErrors} filas saltadas/fallidas.`);
                         
                         if (qrCount > 0) {
                             let statusMsg = `<p style="color: green;">¡Se generaron ${qrCount} códigos QR!</p>`;
@@ -375,11 +318,57 @@
                                 statusMsg += ` <p style="color: red;">(${qrErrors} fila${qrErrors > 1 ? 's' : ''} saltadas/fallidas).</p>`;
                             }
                             status.innerHTML = statusMsg;
-                            
-                            downloadBtn.style.display = 'block'; 
                             searchBox.style.display = 'block'; 
-                            qrContainerMessage.style.display = 'block';
-                        
+                            
+                            // ---- ¡CAMBIO CLAVE v21: Solución "Race Condition"! ----
+                            // Esperar 1 milisegundo a que el DOM se termine de pintar
+                            setTimeout(() => {
+                                console.log("Preparando imágenes para ZIP...");
+                                generatedQRs = []; // Limpiar
+                                
+                                const allCards = document.querySelectorAll('#qr-container .qr-card');
+                                
+                                allCards.forEach(card => {
+                                    const qrCanvas = card.querySelector('canvas');
+                                    const titleEl = card.querySelector('p');
+                                    
+                                    if (qrCanvas && titleEl) {
+                                        try {
+                                            const originalName = titleEl.textContent;
+                                            const qrSize = qrCanvas.width;
+
+                                            const finalCanvas = document.createElement('canvas');
+                                            const textHeight = 30;
+                                            finalCanvas.width = qrSize;
+                                            finalCanvas.height = qrSize + textHeight;
+                                            const ctx = finalCanvas.getContext('2d');
+                                            
+                                            ctx.fillStyle = 'white';
+                                            ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+                                            ctx.drawImage(qrCanvas, 0, 0);
+                                            
+                                            ctx.fillStyle = 'black';
+                                            ctx.font = '16px Arial';
+                                            ctx.textAlign = 'center';
+                                            ctx.fillText(originalName, qrSize / 2, qrSize + 20); 
+
+                                            const base64data = finalCanvas.toDataURL('image/png').split(',')[1];
+                                            const filename = (originalName).replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png'; 
+                                            
+                                            generatedQRs.push({ filename: filename, data: base64data });
+
+                                        } catch (e) {
+                                            console.error("Error al guardar imagen para ZIP:", e, titleEl.textContent);
+                                        }
+                                    }
+                                });
+                                
+                                console.log(`${generatedQRs.length} imágenes listas para el ZIP.`);
+                                if (generatedQRs.length > 0) {
+                                    downloadBtn.style.display = 'block'; 
+                                }
+                            }, 1); // 1ms de espera es suficiente
+
                         } else if (qrErrors > 0) {
                             status.innerHTML = `<p style="color: red;">No se pudo generar ningún QR. ${qrErrors} filas fallaron.</p>`;
                         } else {
@@ -397,65 +386,19 @@
                 });
             });
 
-            // ---- Evento del Buscador (Dibuja al buscar) ----
+            // ---- Evento del Buscador ----
             searchBox.addEventListener('input', () => {
                 const query = searchBox.value.toLowerCase().trim();
+                const allCards = document.querySelectorAll('.qr-card');
                 
-                qrContainer.innerHTML = ''; 
-                
-                if (query.length < 2) { 
-                    qrContainer.appendChild(qrContainerMessage);
-                    qrContainerMessage.style.display = 'block';
-                    qrContainerMessage.querySelector('p').textContent = 'Escribe al menos 2 letras para buscar...';
-                    return;
-                }
-
-                const results = searchableData.filter(item => 
-                    item.name.toLowerCase().includes(query) ||
-                    item.email.toLowerCase().includes(query) ||
-                    item.phone.includes(query)
-                );
-                
-                const maxResults = 50; 
-                const limitedResults = results.slice(0, maxResults);
-                
-                if (limitedResults.length > 0) {
-                    const grid = document.createElement('div');
-                    grid.className = 'qr-results-grid';
-                    
-                    limitedResults.forEach(item => {
-                        const card = document.createElement('div');
-                        card.className = 'qr-card';
-                        const title = document.createElement('p');
-                        title.textContent = item.name || item.email || item.phone;
-                        card.appendChild(title);
-                        const qrCodeEl = document.createElement('div');
-                        card.appendChild(qrCodeEl);
-                        
-                        // Generar el QR visible (esto es rápido para 50)
-                        new QRCode(qrCodeEl, {
-                            text: item.vCard,
-                            width: 180,
-                            height: 180,
-                            correctLevel: QRCode.CorrectLevel.L
-                        });
-                        grid.appendChild(card);
-                    });
-                    
-                    qrContainer.appendChild(grid);
-                    
-                    if (results.length > maxResults) {
-                        const infoMsg = document.createElement('p');
-                        infoMsg.textContent = `Mostrando ${maxResults} de ${results.length} resultados. Afina tu búsqueda.`;
-                        infoMsg.style.textAlign = 'center';
-                        infoMsg.style.marginTop = '20px';
-                        qrContainer.appendChild(infoMsg);
+                allCards.forEach(card => {
+                    const searchableText = card.getAttribute('data-search-text').toLowerCase();
+                    if (searchableText.includes(query)) {
+                        card.style.display = 'block';
+                    } else {
+                        card.style.display = 'none';
                     }
-                } else {
-                    qrContainer.appendChild(qrContainerMessage);
-                    qrContainerMessage.style.display = 'block';
-                    qrContainerMessage.querySelector('p').textContent = 'No se encontraron resultados.';
-                }
+                });
             });
 
             // ---- Evento del botón "Descargar ZIP" ----
@@ -465,7 +408,7 @@
                     return;
                 }
                 if (generatedQRs.length === 0) { 
-                    alert("No hay QRs exitosos para descargar.");
+                    alert("No hay QRs exitosos para descargar. ¿Quizás el script sigue procesando?");
                     return;
                 }
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Contactos QR (v19 - ZIP Corregido)</title>
+    <title>Generador de Contactos QR (v20 - ZIP Definitivo)</title>
     
     <script src="papaparse.min.js"></script>
     <script src="qrcode.min.js"></script>
@@ -167,8 +167,6 @@
 </head>
 <body>
 
-    <div id="qr-factory" style="display: none;"></div>
-
     <div class="app-container">
         <header>
             <h1>Generador de Contactos QR</h1>
@@ -202,7 +200,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("Generador QR v19 (ZIP Corregido) cargado.");
+            console.log("Generador QR v20 (ZIP Definitivo) cargado.");
 
             // Referencias
             const csvFile = document.getElementById('csvFile');
@@ -212,19 +210,11 @@
             const status = document.getElementById('status');
             const qrContainer = document.getElementById('qr-container');
             const qrContainerMessage = document.getElementById('qr-container-message');
-            const qrFactory = document.getElementById('qr-factory');
             
             let qrCount = 0;
             let qrErrors = 0; 
             let generatedQRs = []; 
             let searchableData = []; 
-
-            // Crear UNA instancia de QRCode oculta
-            const qrInstance = new QRCode(qrFactory, {
-                width: 180,
-                height: 180,
-                correctLevel: QRCode.CorrectLevel.L
-            });
 
             // Función para "latinizar" (quitar acentos)
             function latinize(str) {
@@ -233,6 +223,54 @@
                     .normalize("NFD") 
                     .replace(/[\u0300-\u036f]/g, "") 
                     .replace(/[^ \w.-@]/g, ''); 
+            }
+            
+            // ---- ¡CAMBIO CLAVE v20: Generador de ZIP en memoria! ----
+            // Esta función crea un QR en un canvas temporal y devuelve los datos
+            function generateQrForZip(vCard, name) {
+                try {
+                    // 1. Crear un div temporal (fuera del DOM)
+                    const tempDiv = document.createElement('div');
+                    
+                    // 2. Crear una NUEVA instancia de QRCode
+                    new QRCode(tempDiv, {
+                        text: vCard,
+                        width: 180,
+                        height: 180,
+                        correctLevel: QRCode.CorrectLevel.L
+                    });
+                    
+                    // 3. Obtener el canvas que acaba de crear
+                    const qrCanvas = tempDiv.querySelector('canvas');
+                    if (!qrCanvas) {
+                        throw new Error("No se pudo crear el canvas del QR");
+                    }
+                    
+                    // 4. Crear el canvas final con el nombre
+                    const qrSize = 180;
+                    const textHeight = 30;
+                    const finalCanvas = document.createElement('canvas');
+                    finalCanvas.width = qrSize;
+                    finalCanvas.height = qrSize + textHeight;
+                    const ctx = finalCanvas.getContext('2d');
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+                    ctx.drawImage(qrCanvas, 0, 0); // Copiar el QR
+                    
+                    ctx.fillStyle = 'black';
+                    ctx.font = '16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(name, qrSize / 2, qrSize + 20); // Añadir nombre
+
+                    // 5. Devolver los datos de la imagen final
+                    return finalCanvas.toDataURL('image/png').split(',')[1];
+                    
+                } catch (e) {
+                    // Si falla esta instancia, devuelve null
+                    console.error("Fallo al generar un QR para el ZIP:", name, e.message);
+                    return null;
+                }
             }
             
             // ---- Evento "Generar QRs" ----
@@ -305,36 +343,10 @@
 
                         const vCard = createVCard(qrName, qrEmail, qrPhone); 
                         
-                        // 3. Generar QR en memoria
-                        try {
-                            qrInstance.clear(); 
-                            qrInstance.makeCode(vCard); 
-                            
-                            const qrCanvas = qrFactory.querySelector('canvas');
-                            
-                            // ---- ¡CAMBIO CLAVE v19: Solución al "Racing Bug"! ----
-                            // Se crea el canvas final y se extraen los datos INMEDIATAMENTE
-                            
-                            const qrSize = 180;
-                            const textHeight = 30;
-                            const finalCanvas = document.createElement('canvas'); // Crear un *nuevo* canvas
-                            finalCanvas.width = qrSize;
-                            finalCanvas.height = qrSize + textHeight;
-                            const ctx = finalCanvas.getContext('2d');
-                            
-                            ctx.fillStyle = 'white';
-                            ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-                            ctx.drawImage(qrCanvas, 0, 0); // Copiar el QR *ahora*
-                            
-                            ctx.fillStyle = 'black';
-                            ctx.font = '16px Arial';
-                            ctx.textAlign = 'center';
-                            ctx.fillText(originalName, qrSize / 2, qrSize + 20); // Añadir nombre
-
-                            // Obtener los datos del *nuevo* canvas
-                            const finalImageData = finalCanvas.toDataURL('image/png').split(',')[1];
-                            // ----------------------------------------------------
-                            
+                        // ---- ¡CAMBIO CLAVE v20: Generar ZIP aquí! ----
+                        const finalImageData = generateQrForZip(vCard, originalName);
+                        
+                        if (finalImageData) {
                             // Guardar datos para ZIP
                             const filename = (originalName || originalEmail || originalPhone).replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png'; 
                             generatedQRs.push({ filename: filename, data: finalImageData });
@@ -344,20 +356,18 @@
                                 name: originalName,
                                 email: originalEmail,
                                 phone: originalPhone,
-                                vCard: vCard
+                                vCard: vCard // Guardar la vCard para el buscador
                             });
-
                             qrCount++;
-                        } catch (e) {
+                        } else {
+                            // El QR falló al generarse (ej. overflow)
                             qrErrors++;
-                            console.error(`¡Error procesando fila (Nombre: ${originalName})!`, e.message, "Datos:", row);
+                            console.error(`¡Error procesando fila (Nombre: ${originalName})!`, "Datos:", row);
                         }
                     },
                     
                     complete: () => {
                         console.log(`Parseo en memoria completado. ${qrCount} QRs generados, ${qrErrors} filas saltadas/fallidas.`);
-                        
-                        qrInstance.clear();
                         
                         if (qrCount > 0) {
                             let statusMsg = `<p style="color: green;">¡Se generaron ${qrCount} códigos QR!</p>`;
@@ -422,6 +432,7 @@
                         const qrCodeEl = document.createElement('div');
                         card.appendChild(qrCodeEl);
                         
+                        // Generar el QR visible (esto es rápido para 50)
                         new QRCode(qrCodeEl, {
                             text: item.vCard,
                             width: 180,
@@ -465,7 +476,6 @@
                 const zip = new JSZip();
                 
                 for (const qr of generatedQRs) {
-                    // Ahora 'qr.data' es la imagen final con el nombre
                     zip.file(qr.filename, qr.data, { base64: true });
                 }
 
@@ -503,7 +513,7 @@
                 }
                 vCard += `N:${lastName};${firstName};;;\n`; 
                 vCard += `FN:${name}\n`; 
-                if (phone) vCard += `TEL;TYPE=CELL:${phone}\n`; 
+                if (phone) vCard += `TEL;TYPE:CELL:${phone}\n`; 
                 if (email) vCard += `EMAIL:${email}\n`; 
                 vCard += "END:VCARD";
                 return vCard;
